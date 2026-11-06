@@ -52,6 +52,11 @@ export const DATABASE_READONLY = envBool('DATABASE_READONLY', false);
 /** 前端构建产物：与 Python 版一致指向 cloud/web/dist */
 export const WEB_DIST = env('WEB_DIST', path.join(REPO_ROOT, 'cloud', 'web', 'dist'));
 export const APK_DIR = env('APK_DIR', path.join(REPO_ROOT, 'cloud', 'data', 'download'));
+/** APK 版本元数据（Python 用 --version-file，生产是 /var/lib/charge-cloud/version.json） */
+export const VERSION_FILE = env(
+  'VERSION_FILE',
+  path.join(REPO_ROOT, 'cloud', 'data', 'version.json'),
+);
 
 /* ---------------- 安全 ---------------- */
 

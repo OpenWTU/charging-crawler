@@ -13,6 +13,7 @@ import { migrate } from './db/migrate.js';
 import { registerPortsRoutes } from './routes/ports.js';
 import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerStateRoutes } from './routes/state.js';
+import { registerStaticRoutes } from './routes/static.js';
 
 export type App = FastifyInstance;
 
@@ -28,6 +29,8 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
   await registerPortsRoutes(app);
   await registerAnalyticsRoutes(app);
   await registerStateRoutes(app);
+  // 静态资源 + /api/version + /api/latest
+  await registerStaticRoutes(app);
 
   // ---- 健康检查（Python 版 /health 的等价实现） ----
   app.get('/health', async (_req, reply) => {
@@ -45,14 +48,8 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
     }
   });
 
-  // ---- 版本（P2 补全为与 Python 版一致的字段） ----
-  app.get('/api/version', async (_req, reply) => {
-    return reply.send({
-      versionCode: 0,
-      versionName: '0.0.0-node',
-      note: 'Node 重构版（P0 骨架）',
-    });
-  });
+  // 注意：/api/version 与 /api/latest 由 routes/static.ts 提供（读真实 version.json
+  // 与最新快照），这里不再放占位实现 —— 占位数据会让 App 的更新检查失效。
 
   app.setErrorHandler((err: FastifyError, req, reply) => {
     req.log.error({ err, url: req.url }, '未捕获错误');
