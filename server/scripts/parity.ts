@@ -140,6 +140,11 @@ async function main(): Promise<void> {
   // 概览（含令牌池/健康字段）
   cases.push({ label: 'overview', path: '/api/overview' });
 
+  // /api/now：两种变体都测（带坐标会走 haversine + score + walk_min 分支）
+  cases.push({ label: 'now', path: '/api/now' });
+  cases.push({ label: 'now[with coords]', path: '/api/now?lat=30.3811726&lng=114.3396025' });
+  cases.push({ label: 'now[bad coords]', path: '/api/now?lat=abc&lng=999' });
+
   // 2) 逐个端点对拍
   for (const c of cases) {
     const [py, nd] = await Promise.all([getJSON(PY_BASE, c.path), getJSON(NODE_BASE, c.path)]);

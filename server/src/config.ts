@@ -85,6 +85,22 @@ export const WORKER_INTERVAL = 600;
 export const HEALTH_STALE_SECONDS = WORKER_INTERVAL + 300;
 export const HEALTH_CACHE_TTL = 30;
 
+/* ---------------- /api/now 到达预测（与 Python 版一致） ---------------- */
+
+export const NOW_HIST_DAYS = 14;
+export const NOW_TREND_MINUTES = 30;
+export const NOW_TREND_MIN_SPAN_MIN = 5;
+export const NOW_ETA_MAX_MINUTES = 120;
+export const NOW_TREND_SHRINK_K = 9.0;
+export const NOW_FREE_KEEP_10M = 0.76;
+export const NOW_WALK_M_PER_MIN = 80;
+export const NOW_ZERO_HOUR_PRIOR_MIN = 30.0;
+export const NOW_ZERO_AREA_PRIOR_MIN = 240.0;
+export const NOW_ZERO_GLOBAL_PRIOR_EVENTS = 0.5;
+export const NOW_ZERO_GLOBAL_PRIOR_MIN = 60.0;
+export const NOW_ETA_MEDIAN_SCALE = 0.6;
+export const PREDICTION_CACHE_TTL = 60;
+
 export const ANALYTICS_SLOT_MINUTES = 15;
 export const ANALYTICS_TREND_SLOTS = 96;
 export const ANALYTICS_TREND_DAYS = 7;

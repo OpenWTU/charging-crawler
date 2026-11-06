@@ -13,6 +13,7 @@
  *  - state：无端口→unknown；free>0→free；busy>0→full；否则→unavailable
  */
 import { PORT_STALE_SECONDS } from '../config.js';
+import { getDb, sql } from '../db/index.js';
 import { statusGroup as mapStatusGroup, type PortGroup } from './port-status.js';
 
 /** 端口行：[port, status, updated_at] */
@@ -172,4 +173,45 @@ export function summarizeDevices(devices: ReadonlyArray<DeviceCounts>): AreaSumm
     }
   }
   return summary;
+}
+
+/**
+ * 区域级端口状态（/api/now 的 port_state），口径与 portsHealth 对齐。
+ *  - total <= 0 → unknown
+ *  - idle == 0 且 busy == 0 → unavailable
+ *  - idle == 0 且 busy > 0 → full
+ *  - 0 < idle < total → busy
+ *  - idle >= total → free
+ */
+export function areaPortState(idle: number, total: number, unavailable = 0): string {
+  const totalI = Math.max(Math.trunc(total || 0), 0);
+  const idleI = Math.max(Math.trunc(idle || 0), 0);
+  const unavailI = Math.max(Math.trunc(unavailable || 0), 0);
+  if (totalI <= 0) return 'unknown';
+  const busyI = totalI - idleI - unavailI;
+  if (idleI <= 0) return busyI > 0 ? 'full' : 'unavailable';
+  if (idleI >= totalI) return 'free';
+  return 'busy';
+}
+
+/**
+ * 按区域统计 (端口总数, 不可用数)，供 /api/now 的 unavailable_ports。
+ * 口径：unavailable 来自端口级明细（含禁用/绑定/维护/硬件故障），
+ * 比平台的 faultPort 更全；没有明细的区域不出现在返回值里，调用方回退 faultPort。
+ */
+export async function areaPortGroupCounts(): Promise<Map<string, [number, number]>> {
+  const db = getDb();
+  const res = await sql<{ area_name: string; total: number; bad: number | null }>`
+    SELECT c.area_name, COUNT(*) AS total,
+           SUM(CASE WHEN p.status_group = 'unavailable' THEN 1 ELSE 0 END) AS bad
+      FROM port_states p
+      JOIN controllers c ON c.device_hex = p.device_hex
+     WHERE c.area_name IS NOT NULL AND c.area_name <> ''
+     GROUP BY c.area_name
+  `.execute(db);
+  const out = new Map<string, [number, number]>();
+  for (const r of res.rows) {
+    out.set(String(r.area_name), [Number(r.total), Number(r.bad ?? 0)]);
+  }
+  return out;
 }
