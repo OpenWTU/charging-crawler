@@ -11,6 +11,7 @@ import { logger } from './logger.js';
 import { closeDb, createDb, getDb, getRaw, ping } from './db/index.js';
 import { migrate } from './db/migrate.js';
 import { registerPortsRoutes } from './routes/ports.js';
+import { registerAnalyticsRoutes } from './routes/analytics.js';
 
 export type App = FastifyInstance;
 
@@ -24,6 +25,7 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
 
   await app.register(cookie);
   await registerPortsRoutes(app);
+  await registerAnalyticsRoutes(app);
 
   // ---- 健康检查（Python 版 /health 的等价实现） ----
   app.get('/health', async (_req, reply) => {

@@ -83,6 +83,11 @@ function diff(a: unknown, b: unknown, path = '$', out: string[] = [], maxDiffs =
     return out;
   }
   if (a !== b) {
+    // 浮点比较加相对容差：两端 SQL 聚合顺序与舍入实现不同，末位可能差 1e-9 级
+    if (typeof a === 'number' && typeof b === 'number') {
+      const tol = Math.max(1e-9, Math.abs(a) * 1e-9);
+      if (Math.abs(a - b) <= tol) return out;
+    }
     out.push(`${path}: py=${JSON.stringify(a)} node=${JSON.stringify(b)}`);
   }
   return out;
@@ -116,6 +121,19 @@ async function main(): Promise<void> {
     cases.push({
       label: `area-ports[${areaName}]`,
       path: `/api/area-ports?area=${encodeURIComponent(areaName)}`,
+    });
+    cases.push({
+      label: `history[${areaName}]`,
+      path: `/api/history?area=${encodeURIComponent(areaName)}&limit=50`,
+    });
+  }
+
+  // 分析端点（全量 + 单区各一次）
+  cases.push({ label: 'analytics', path: '/api/analytics' });
+  if (areaNames[0]) {
+    cases.push({
+      label: `analytics[${areaNames[0]}]`,
+      path: `/api/analytics?area=${encodeURIComponent(areaNames[0])}&weeks=8`,
     });
   }
 
