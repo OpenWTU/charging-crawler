@@ -50,28 +50,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  # P2P 独立进程（可选，默认不启动）：
-  #   docker compose --profile p2p up -d
-  p2p:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-    image: ghcr.io/openwtu/charging-crawler:latest
-    container_name: charge-node-p2p
-    restart: unless-stopped
-    profiles: ["p2p"]
-    command: ["node", "dist/p2p.js"]
-    ports:
-      - "4001:4001"
-    environment:
-      NODE_ENV: production
-      P2P_ENABLED: "true"
-      P2P_LISTEN_PORT: "4001"
-      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
-    volumes:
-      - ${DATA_DIR:-./data}:/data
-    mem_limit: 256m
-    depends_on:
-      app:
-        condition: service_healthy

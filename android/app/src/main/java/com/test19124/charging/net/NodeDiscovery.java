@@ -248,7 +248,14 @@ public final class NodeDiscovery {
                 public void onStopDiscoveryFailed(String serviceType, int errorCode) {
                 }
             };
-            nsdManager.discoverServices(MDNS_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener);
+            // NsdManager 回调需要主线程 Looper，必须 post 到主线程
+            mainHandler.post(() -> {
+                try {
+                    nsdManager.discoverServices(MDNS_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener);
+                } catch (Exception e) {
+                    DebugLog.add("mDNS discoverServices 失败: " + e.getMessage());
+                }
+            });
         } catch (Exception e) {
             DebugLog.add("mDNS 初始化失败: " + e.getMessage());
         }

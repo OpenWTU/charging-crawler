@@ -56,6 +56,7 @@ fi
 VERSION_JSON_URL="https://github.com/OpenWTU/charging-crawler/releases/download/$TAG/version.json"
 APK_URL="https://github.com/OpenWTU/charging-crawler/releases/download/$TAG/app-debug.apk"
 DATA_DIR="${DATA_DIR:-/var/lib/charge-cloud}"
+mkdir -p "$DATA_DIR/download"
 if curl -fsSL --max-time 20 -o /tmp/version.json.new "$VERSION_JSON_URL"; then
   if [ -s /tmp/version.json.new ]; then
     cp /tmp/version.json.new "$DATA_DIR/version.json"
