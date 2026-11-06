@@ -1,5 +1,50 @@
 # server/deploy —— Node 版部署
 
+## Docker 快速部署（2026-11-06 新增，推荐）
+
+镜像仓库：`ghcr.io/openwtu/charging-crawler`（CI 推 `v*` tag 自动构建）。
+
+```bash
+# 1. 装 Docker（Ubuntu）
+curl -fsSL https://get.docker.com | sh
+
+# 2. 拉部署文件（docker-compose.yml + update-node.sh + timer）
+mkdir -p /opt/charge-node
+# 把仓库根 docker-compose.yml 和 server/deploy/update-node.sh 放进去
+
+# 3. 复用现有数据（SQLite/token_key 已在 /var/lib/charge-cloud）
+DATA_DIR=/var/lib/charge-cloud docker compose pull
+DATA_DIR=/var/lib/charge-cloud docker compose up -d
+
+# 4. 验证
+curl http://127.0.0.1:8791/health
+```
+
+## 从 systemd 迁移到 Docker
+
+1. `systemctl stop charge-node`（旧 systemd 版）
+2. 按上面步骤起容器（DATA_DIR 指向 /var/lib/charge-cloud 复用数据）
+3. 验证 /health + /api/overview + /status
+4. 稳定后 `systemctl disable charge-node`
+
+⚠️ **不要在服务器上 `docker compose build`**——构建 node_modules 会拉高负载
+（ICPC 服务器已有教训）。服务器只 `pull` 现成镜像，构建在 CI 做。
+
+## 凌晨静默更新（失败自动回退）
+
+```bash
+# 安装 timer（凌晨 3:00 拉最新镜像，失败回退旧镜像）
+cp server/deploy/update-node.sh /opt/charge-node/
+cp server/deploy/charge-node-update.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now charge-node-update.timer
+```
+
+更新日志：`/var/log/charge-update.log`（成功/失败/回退都记录）。
+回退原理：旧镜像仍在本地，回退 = 把旧镜像 ID 重新 tag 回目标标签再重建容器。
+
+---
+
 ## 当前生产状态（2026-11-06 P8 完成后）
 
 **Python 已下线**：charge-cloud 已 stop+disable。Node（charge-node）扛全部：
