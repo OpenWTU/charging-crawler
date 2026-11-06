@@ -18,22 +18,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "app" / "src" / "main"
 BUILD = ROOT / "build"
-SDK = Path(r"C:\Android\sdk")
-JDK = Path(r"C:\Android\jdk17")
+SDK = Path(os.environ.get("CHARGE_ANDROID_SDK", r"C:\Android\sdk"))
+JDK = Path(os.environ.get("CHARGE_JAVA_HOME", r"C:\Android\jdk17"))
 BT = SDK / "build-tools" / "34.0.0"
 PLATFORM = SDK / "platforms" / "android-34" / "android.jar"
+# 工具名跨平台（Windows 带 .exe/.bat，Linux 无后缀）
+IS_WIN = os.name == "nt"
+AAPT2 = BT / ("aapt2.exe" if IS_WIN else "aapt2")
+D8 = BT / ("d8.bat" if IS_WIN else "d8")
+ZIPALIGN = BT / ("zipalign.exe" if IS_WIN else "zipalign")
+APKSIGNER = BT / ("apksigner.bat" if IS_WIN else "apksigner")
+JAVAC = JDK / "bin" / ("javac.exe" if IS_WIN else "javac")
 ENV = os.environ.copy()
 ENV["JAVA_HOME"] = str(JDK)
 ENV["PATH"] = str(JDK / "bin") + os.pathsep + ENV.get("PATH", "")
 
-# 版本号唯一来源：构建时同步写入 version.json
+# 版本号唯一来源：构建时同步写入 version.json。
+# CI 构建时用环境变量覆盖（CHARGE_VERSION_CODE / CHARGE_VERSION_NAME 来自 tag）
 CHANGELOG = [
     "刷新进度：顶部卡片细进度线 + 副标题阶段文案，不再推挤下方内容",
     "抓取与端口阶段合并为一条连续进度（0-45-95%），不再闪没",
     "令牌保存/数据上传后立即刷新顶部健康状态（含 overview 缓存主动失效）",
 ]
-VERSION_CODE = "215"
-VERSION_NAME = "1.11.39"
+VERSION_CODE = os.environ.get("CHARGE_VERSION_CODE", "215")
+VERSION_NAME = os.environ.get("CHARGE_VERSION_NAME", "1.11.39")
 
 
 
@@ -81,16 +89,16 @@ def main():
                if not (www / "assets" / name).is_file()]
     if missing:
         raise SystemExit(f"app.html 引用的资源缺失: {missing[:5]}")
-    run([BT / "aapt2.exe", "compile", "--dir", SRC / "res", "-o", res])
-    run([BT / "aapt2.exe", "link", "-o", BUILD / "base.apk", "-I", PLATFORM,
+    run([AAPT2, "compile", "--dir", SRC / "res", "-o", res])
+    run([AAPT2, "link", "-o", BUILD / "base.apk", "-I", PLATFORM,
          "--manifest", SRC / "AndroidManifest.xml", "--java", gen,
          "-A", SRC / "assets", "--min-sdk-version", "26",
          "--target-sdk-version", "34", "--version-code", VERSION_CODE,
          "--version-name", VERSION_NAME, *sorted(res.glob("*.flat"))])
     java = sorted((SRC / "java").rglob("*.java")) + sorted(gen.rglob("*.java"))
-    run([JDK / "bin/javac.exe", "--release", "8", "-encoding", "UTF-8",
+    run([JAVAC, "--release", "8", "-encoding", "UTF-8",
          "-classpath", PLATFORM, "-d", classes, *java])
-    run([BT / "d8.bat", "--lib", PLATFORM, "--min-api", "26",
+    run([D8, "--lib", PLATFORM, "--min-api", "26",
          "--output", dex_dir, *sorted(classes.rglob("*.class"))])
     unsigned = BUILD / "unsigned.apk"
     with zipfile.ZipFile(BUILD / "base.apk") as src, \
@@ -102,7 +110,7 @@ def main():
             raise SystemExit("d8 未产出 classes*.dex")
         for dex in dex_files:
             dst.write(dex, dex.name)
-    run([BT / "zipalign.exe", "-f", "4", unsigned, BUILD / "aligned.apk"])
+    run([ZIPALIGN, "-f", "4", unsigned, BUILD / "aligned.apk"])
     secrets = Path(os.environ.get("CHARGE_SECRETS_DIR", str(Path.home() / ".charge-secrets")))
     props = secrets / "keystore.properties"
     if not props.exists():
@@ -120,7 +128,7 @@ def main():
     if not keystore.exists():
         raise SystemExit(f"签名文件不存在: {keystore}")
     apk = BUILD / "app-debug.apk"
-    run([BT / "apksigner.bat", "sign", "--ks", keystore, "--ks-pass", f"pass:{pw}",
+    run([APKSIGNER, "sign", "--ks", keystore, "--ks-pass", f"pass:{pw}",
          "--key-pass", f"pass:{pw}", "--ks-key-alias", alias,
          "--out", apk, BUILD / "aligned.apk"])
     print("APK:", apk, apk.stat().st_size // 1024, "KB")

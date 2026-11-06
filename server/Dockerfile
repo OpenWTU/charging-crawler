@@ -1,53 +1,58 @@
 # ---------- 构建阶段 ----------
-# 用 Node 24：node:sqlite 在 24 里已正式支持，无需 better-sqlite3 原生模块
-# 因此镜像里不需要 python3 / make / g++，体积和构建时间都大幅下降
+# 构建上下文 = 仓库根（见 docker-compose.yml 的 build.context）
+# Node 24：node:sqlite 已正式（无 experimental warning），无需原生模块编译
 FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# 先只拷依赖清单，最大化利用缓存
-COPY package.json pnpm-lock.yaml* .npmrc* ./
-RUN corepack enable \
- && (pnpm install --frozen-lockfile=false --prod=false || npm install)
+# 先只拷依赖清单，最大化利用层缓存
+COPY server/package.json server/pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile=false
 
-# 再拷源码并编译
-COPY tsconfig.json tsconfig.build.json ./
-COPY src ./src
-COPY migrations ./migrations
-RUN (pnpm run build || npm run build)
+# 拷源码并编译
+COPY server/tsconfig.json server/tsconfig.build.json ./
+COPY server/src ./src
+COPY server/migrations ./migrations
+RUN pnpm run build
 
 # ---------- 运行阶段 ----------
 FROM node:24-alpine
 
-RUN apk add --no-cache tini
+RUN apk add --no-cache tini curl
 
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY package.json pnpm-lock.yaml* .npmrc* ./
-RUN corepack enable \
- && (pnpm install --prod --frozen-lockfile=false || npm install --omit=dev) \
- && (pnpm store prune || true)
+# 生产依赖（libp2p 等全是纯 JS，无需编译工具）
+COPY server/package.json server/pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --prod --frozen-lockfile=false && pnpm store prune || true
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/migrations ./migrations
 
+# 前端产物打进镜像（cloud/web/dist 即 vite 输出：index.html + app.html + assets/），
+# 与后端同 tag 发布，节点间不会前端版本不一致。
+COPY cloud/web/dist /web
+
 # 非 root 运行
-RUN mkdir -p /data /web \
+RUN mkdir -p /data /apk \
  && addgroup -S app && adduser -S app -G app \
- && chown -R app:app /app /data /web
+ && chown -R app:app /app /data /web /apk
 USER app
 
 ENV HOST=0.0.0.0 \
     PORT=8791 \
     DATABASE_PATH=/data/charge.db \
     WEB_DIST=/web \
+    APK_DIR=/apk \
+    TOKEN_KEY_FILE=/data/token_key \
     P2P_ENABLED=false
 
 EXPOSE 8791
+EXPOSE 4001
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8791)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -sf http://127.0.0.1:8791/health || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/server.js"]
