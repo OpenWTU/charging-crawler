@@ -3,7 +3,12 @@
  *
  * P0 阶段只提供：健康检查、优雅退出、日志。业务路由在 P2 逐步挂载。
  */
+import dns from 'node:dns';
 import Fastify from 'fastify';
+
+// 国内服务器 IPv6 常不可达，DNS 只返回 IPv6 时 Node fetch 会 ECONNRESET。
+// 全局 IPv4 优先，让白名单拉取等出站请求走 IPv4。
+dns.setDefaultResultOrder('ipv4first');
 import type { FastifyError, FastifyInstance, FastifyServerOptions } from 'fastify';
 import cookie from '@fastify/cookie';
 import { HOST, PORT, NODE_ENV, P2P_ENABLED, DATABASE_READONLY, AUTO_WORKER } from './config.js';
