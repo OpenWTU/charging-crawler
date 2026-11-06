@@ -105,6 +105,12 @@ def main():
         ("area-ports 缺参", "/api/area-ports"),
         ("history 缺参", "/api/history"),
         ("analytics 未知区", "/api/analytics?area=不存在的区"),
+        ("area-coords", "/api/area-coords"),
+        ("controllers", "/api/controllers"),
+        ("free-rate", "/api/free-rate"),
+        ("free-rate 7d", "/api/free-rate?days=7"),
+        ("free-rate 非法", "/api/free-rate?days=abc"),
+        ("latest", "/api/latest"),
     ]
 
     # 用真实区域名补几个用例

@@ -14,6 +14,7 @@ import { registerPortsRoutes } from './routes/ports.js';
 import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerStateRoutes } from './routes/state.js';
 import { registerStaticRoutes } from './routes/static.js';
+import { registerMiscRoutes } from './routes/misc.js';
 
 export type App = FastifyInstance;
 
@@ -31,6 +32,8 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
   await registerStateRoutes(app);
   // 静态资源 + /api/version + /api/latest
   await registerStaticRoutes(app);
+  // area-coords / controllers / free-rate
+  await registerMiscRoutes(app);
 
   // ---- 健康检查（Python 版 /health 的等价实现） ----
   app.get('/health', async (_req, reply) => {
