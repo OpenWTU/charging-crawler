@@ -119,10 +119,12 @@ public final class OverviewCache {
         }
         try {
             JSONObject o = new JSONObject(cached);
+            // 服务器数据是权威：token_pool/token_ready/earliest_exp 等一律覆盖本地值，
+            // 否则本地 token 的过期时间会被误显示成「服务器令牌覆盖到」。
             for (String key : new String[]{"uploads", "received_at", "generated_at",
                     "last_scan_at", "token_ready", "token_valid", "earliest_exp",
                     "interval", "error_count", "token_pool"}) {
-                if (!root.has(key) && o.has(key)) {
+                if (o.has(key)) {
                     root.put(key, o.get(key));
                 }
             }
