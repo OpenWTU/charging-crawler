@@ -26,8 +26,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: webui/pnpm-lock.yaml
 
-      # 前端必须先构建：Dockerfile 会 COPY cloud/web/dist
-      - name: 构建前端（输出到 cloud/web/dist）
+      # 前端必须先构建：Dockerfile 会 COPY webui/dist
+      - name: 构建前端（输出到 webui/dist）
         working-directory: webui
         run: |
           pnpm install --frozen-lockfile=false

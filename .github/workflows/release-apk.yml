@@ -20,12 +20,22 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      - name: 设置 ANDROID_HOME
+        run: |
+          echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+
+      - name: 下载 Android cmdline-tools
+        run: |
+          curl -fsSL -o /tmp/clt.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q -o /tmp/clt.zip -d "$HOME/android-sdk/cmdline-tools"
+          mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
 
       - name: 安装 Android SDK 组件
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
 
       - uses: pnpm/action-setup@v6
         with:
@@ -37,7 +47,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: webui/pnpm-lock.yaml
 
-      - name: 构建前端（build.py 需要 cloud/web/dist）
+      - name: 构建前端（build.py 需要 webui/dist）
         working-directory: webui
         run: |
           pnpm install --frozen-lockfile=false
