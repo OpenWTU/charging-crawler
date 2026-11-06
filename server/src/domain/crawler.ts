@@ -53,7 +53,10 @@ export async function call(
   const { token = '', userId = '', appid = '', timeout = 15 } = opts;
   const query = encodeQuery(params);
   const url = `${BASE}${path}${query ? `?${query}` : ''}`;
-  const headers = buildHeaders(url, userId, token, appid) as Record<string, string>;
+  const headers: Record<string, string> = buildHeaders(url, userId, token, appid) as unknown as Record<
+    string,
+    string
+  >;
   headers['User-Agent'] = USER_AGENT;
 
   const res = await fetch(url, {

@@ -158,7 +158,7 @@ export interface CleanPort {
   group: PortGroup;
 }
 
-function cleanPortEntries(raw: unknown, strict: boolean): CleanPort[] {
+export function cleanPortEntries(raw: unknown, strict: boolean): CleanPort[] {
   if (!Array.isArray(raw)) {
     if (strict) throw new Error('端口列表必须是数组');
     return [];

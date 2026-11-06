@@ -79,3 +79,60 @@ export async function poolUpsert(
     .executeTakeFirst();
   return Number(ins?.insertId ?? 0);
 }
+
+/* ---------------- token 选取与失效标记（cloud/tokens.py 的 worker 路径） ---------------- */
+
+export interface TokenCandidate {
+  id: number;
+  uid: string;
+  enc: string;
+  expiresAt: number;
+}
+
+/**
+ * 从池里取未过期 token，按 expires_at DESC 返回多个候选（默认 3）。
+ * 解密失败过的（last_error LIKE 'decrypt-fail%'）排到健康 token 之后。
+ */
+export async function pickToken(limit = 3, db: Db = getDb()): Promise<TokenCandidate[]> {
+  const r = await sql<{ id: number; user_id: string; token: string; expires_at: number }>`
+    SELECT id, user_id, token, expires_at FROM token_pool
+    WHERE expires_at > ${Math.floor(Date.now() / 1000)}
+    ORDER BY (last_error LIKE 'decrypt-fail%') ASC, expires_at DESC
+    LIMIT ${Math.trunc(limit)}
+  `.execute(db);
+  return r.rows.map((row) => ({
+    id: Number(row.id),
+    uid: String(row.user_id),
+    enc: String(row.token),
+    expiresAt: Number(row.expires_at),
+  }));
+}
+
+/**
+ * 标记某个 token 的 last_error；expire=true 时同时置过期（不再被选中）。
+ * 兼容表 tokens 同 user_id 同步置过期。
+ */
+export async function markPoolError(
+  poolId: number,
+  userId: string,
+  message: string,
+  expire = true,
+  db: Db = getDb(),
+): Promise<void> {
+  const stamp = nowStr();
+  const detail = String(message ?? '').slice(0, 200);
+  if (expire) {
+    await sql`
+      UPDATE token_pool SET last_error = ${detail}, updated_at = ${stamp}, expires_at = 0
+      WHERE id = ${poolId}
+    `.execute(db);
+    await sql`
+      UPDATE tokens SET expires_at = 0 WHERE user_id = ${userId} AND expires_at > 0
+    `.execute(db);
+  } else {
+    await sql`
+      UPDATE token_pool SET last_error = ${detail}, updated_at = ${stamp}
+      WHERE id = ${poolId}
+    `.execute(db);
+  }
+}
