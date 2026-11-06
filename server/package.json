@@ -5,7 +5,7 @@
   "type": "module",
   "description": "校园充电桩空位查询 —— Node/TypeScript 后端（Python 版的重写）",
   "engines": {
-    "node": ">=24"
+    "node": ">=22.5"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",

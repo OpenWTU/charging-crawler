@@ -201,12 +201,7 @@ export async function areaPortsPayload(area: string): Promise<{
 /** 单桩详情（/api/pile/:device） */
 export async function pilePayload(rawDevice: string): Promise<
   | { ok: false; status: number; error: string }
-  | {
-      ok: true;
-      device: Record<string, unknown>;
-      ports: Array<{ port: string; status: string | null }>;
-      history: Array<{ ts: string; free: number | null; total: number | null; busy: number | null; online: boolean }>;
-    }
+  | { ok: true; pile: Record<string, unknown> }
 > {
   const deviceHex = String(rawDevice ?? '').trim();
   if (!deviceHex || deviceHex.length > 32) {
@@ -244,18 +239,42 @@ export async function pilePayload(rawDevice: string): Promise<
      WHERE device_hex = ${ctrl.device_hex} ORDER BY ts DESC LIMIT ${PILE_HISTORY_LIMIT}
   `.execute(db);
 
+  // 与 Python 一致：health 用 (port, status, updated_at) 三元组 + ctrl.updated_at 兜底
+  const portRows: PortRow[] = portsRes.rows.map(
+    (r) => [r.port, r.status, r.updated_at] as const,
+  );
+  const health = portsHealth(portRows, ctrl.updated_at ?? '');
+  const latest = portsRes.rows.reduce(
+    (acc: string, r) => {
+      const v = r.updated_at ?? '';
+      return v > acc ? v : acc;
+    },
+    ctrl.updated_at ?? '',
+  );
+
+  // ⚠️ 响应结构：顶层只有 ok + pile，ports/history 都嵌在 pile 里
   return {
     ok: true,
-    device: { ...ctrl },
-    ports: portsRes.rows.map((r) => ({ port: r.port, status: r.status })),
-    // Python 用 reversed(history) → 按时间升序
-    history: [...histRes.rows].reverse().map((h) => ({
-      ts: h.ts,
-      free: h.free,
-      total: h.total,
-      busy: h.busy,
-      online: Boolean(h.online),
-    })),
+    pile: {
+      device_hex: ctrl.device_hex,
+      code: ctrl.code,
+      area_name: ctrl.area_name,
+      qr_device_no: ctrl.qr_device_no,
+      state: health.state,
+      total: health.total,
+      free: health.free,
+      busy: health.busy,
+      updated_at: latest || null,
+      ports: portsRes.rows.map((r) => ({ port: r.port, status: r.status })),
+      // Python 用 reversed(history) → 按时间升序
+      history: [...histRes.rows].reverse().map((h) => ({
+        ts: h.ts,
+        free: h.free,
+        total: h.total,
+        busy: h.busy,
+        online: Boolean(h.online),
+      })),
+    },
   };
 }
 
