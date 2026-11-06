@@ -27,12 +27,18 @@ public final class OverviewCache {
 
     private static final long FETCH_THROTTLE_MS = 30000;
     private static final long MERGE_TTL_MS = 120000;
+    /** 最近一次成功拉取的「在线有效期」：超过即视为服务器不可达 */
+    private static final long ONLINE_TTL_MS = 120000;
 
     private final Host host;
 
     private volatile String cache = null;
     private volatile long cacheAt = 0;
     private volatile boolean loading = false;
+    /** 是否已经尝试过至少一次拉取（没试过时乐观认为在线，避免首屏闪离线态） */
+    private volatile boolean everFetched = false;
+    /** 最近一次成功时间。与 cacheAt 分开记：invalidateAndRefetch 清缓存时不清它 */
+    private volatile long lastOkAt = 0;
 
     public OverviewCache(Host host) {
         this.host = host;
@@ -56,14 +62,35 @@ public final class OverviewCache {
                 String json = Cloud.fetchOverview().toString();
                 cache = json;
                 cacheAt = System.currentTimeMillis();
+                lastOkAt = cacheAt;
+                everFetched = true;
                 host.postJs("window.__onOverview && window.__onOverview("
                         + JSONObject.quote(json) + ")");
             } catch (Exception e) {
+                everFetched = true; // 明确失败：此后 isOnline() 按 lastOkAt 老化判定
                 DebugLog.add("overview 获取失败: " + e.getMessage());
+                // 失败也要通知前端：否则前端 serverOnline 停在初始 true，
+                // 飞行模式下「分析」「历史」tab 不会隐藏（离线降级失效）。
+                host.postJs("window.__onOverview && window.__onOverview("
+                        + JSONObject.quote("{\"server_online\":false}") + ")");
             } finally {
                 loading = false;
             }
         });
+    }
+
+    /**
+     * 服务器是否可达。前端据此决定是否显示「分析」「历史」等高阶页签。
+     *
+     * <p>判定：还没试过时乐观认为在线（避免首屏闪一下离线态）；试过之后只看
+     * 「最近 2 分钟内是否成功拉取过 overview」。用 lastOkAt 而不是 cache 判断，
+     * 这样上传成功后 {@link #invalidateAndRefetch()} 清缓存不会让页签闪动。</p>
+     */
+    public boolean isOnline() {
+        if (!everFetched) {
+            return true;
+        }
+        return lastOkAt > 0 && System.currentTimeMillis() - lastOkAt < ONLINE_TTL_MS;
     }
 
     /** 缓存原文；从未成功拉取时返回 null（桥据此回 "{}"）。 */

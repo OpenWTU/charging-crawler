@@ -42,6 +42,39 @@ jobs:
       - name: 单元测试
         run: python -m unittest discover -s tests -v
 
+  # Node/TypeScript 重写版（server/）。与 Python 版并行跑，双跑期两个都必须绿。
+  node:
+    name: node & vitest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v7
+        with:
+          # node:sqlite 在 Node 24 才正式，低版本需要 --experimental-sqlite
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: server/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile=false
+
+      - name: 类型检查
+        run: pnpm run typecheck
+
+      - name: 单元测试
+        run: pnpm run test
+
+      - name: 构建
+        run: pnpm run build
+
   web:
     name: web build & lint
     runs-on: ubuntu-latest

@@ -1,0 +1,15 @@
+{
+  "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "nonce_hex": "000102030405060708090a0b",
+  "plaintext_utf8": "测试token:eyJhbGciOiJIUzI1NiJ9.payload.signature",
+  "ct_hex": "a1b75df36a70b674e624f9b1d4903205e191e45dbf1215356d1dacb453004a8b2f60cf85c3ae73fc5ad7168ae6e65c4d9c3c",
+  "tag_hex": "720aeea2f0e562abc9766479f24c2cc5",
+  "hmac": {
+    "secret": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "ts": "1700000000",
+    "nonce": "deadbeefcafe1234",
+    "body_base64": "eyJhcmVhcyI6W3sibmFtZSI6IjEw5qCL5a6/6IiN5qW8MeWPt+WFheeUteWMuiIsImlkbGVfcG9ydCI6MSwidG90YWxfcG9ydCI6MTB9XX0=",
+    "sig_hex": "158ed72e2e5f7a78f968a222cfaf03f1269e1f5e76043761792212d7d2be2493"
+  },
+  "encrypt_token_full": "v1:AQIDBAUGBwgJCgsM41/RPUMBhOknxw19dWqgQCAEgpfYBBqM9CWwFdDfPPyqlPqmAtqN+57f04Kruowo7JMJ2SJ5P5bPJELh/tpNMVv0"
+}

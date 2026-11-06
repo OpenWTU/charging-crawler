@@ -39,6 +39,16 @@ export function useLiveData(notify) {
   const areaCoords = ref(new Map());
   const nowList = ref([]);
 
+  // 服务器可达性：
+  //  - App 模式：由原生侧 overview 拉取结果决定（state.server_online），
+  //    因为 WebView 的 fetch 走的是虚拟域名，前端自己探不到服务器；
+  //  - Web 模式：直接用最近一次 reload 是否成功。
+  // 「分析」「历史」两个高阶页签只在在线时出现，离线时退化为纯本地基础功能。
+  const serverOnline = ref(true);
+  function updateServerOnline(v) {
+    if (typeof v === 'boolean') serverOnline.value = v;
+  }
+
   // 令牌态：token_present=false 时区分「从未设置」与「已失效」（有历史 expires_at 才算失效）
   const tokenInvalid = ref(false);
   const tokenUnset = ref(false);
@@ -126,6 +136,9 @@ export function useLiveData(notify) {
       updatedAt.value = (d.snapshot && d.snapshot.captured_at) || '';
       // 健康条字段与列表同源，但解析失败也只清空健康条，不触发列表错误态
       try { health.value = readHealth(d); } catch { health.value = null; }
+      // App 模式用原生给的 server_online（WebView 自己探不到服务器）；
+      // Web 模式能走到这里就说明请求成功，直接视为在线
+      updateServerOnline(typeof d.server_online === 'boolean' ? d.server_online : true);
       loadError.value = '';
       loaded.value = true;
       loadTokenState();
@@ -135,8 +148,39 @@ export function useLiveData(notify) {
       // 不再静默：记录失败原因，首屏显示「加载失败 · 重试」
       loaded.value = true;
       loadError.value = friendlyMsg(e);
+      updateServerOnline(false); // Web 模式网络失败即离线
       console.warn('[overview] 加载失败', e);
     }
+  }
+
+  /**
+   * 应用原生侧推来的本地快照（抓取完成瞬间，不等服务器）。
+   *
+   * 载荷就是 AndroidHost.getState() 的 JSON，其中 areas 的字段与
+   * /api/overview 的 snapshot.areas 完全兼容
+   * （id / name / address / total_port / idle_port / charging_port / fault_port），
+   * 所以直接复用同一条渲染路径，不需要任何转换。
+   *
+   * 不变量：
+   *  1. 空数据不覆盖现有列表（返回 false），避免一次失败把界面清空；
+   *  2. 只有「首屏从未加载成功」时才触发 onLoaded 装配，避免重复打网络；
+   *  3. 收到本地数据即视为已加载，解除首屏三态（这是离线可用的关键）。
+   *
+   * @returns {boolean} 是否真的应用了
+   */
+  function applyLocalState(state) {
+    if (!state || typeof state !== 'object') return false;
+    const rows = Array.isArray(state.areas) ? state.areas : null;
+    if (!rows || rows.length === 0) return false;
+    const firstLoad = !loaded.value;
+    areas.value = rows;
+    updatedAt.value = state.data_updated_at || state.now || '';
+    loaded.value = true;
+    loadError.value = '';
+    // 原生侧会带 server_online（overview 拉取是否成功），据此控制高阶页签
+    updateServerOnline(state.server_online);
+    if (firstLoad && onLoaded) onLoaded();
+    return true;
   }
 
   function friendlyMsg(e) {
@@ -199,5 +243,6 @@ export function useLiveData(notify) {
     tokenInvalid, tokenUnset, loadTokenState, clearTokenFlags,
     geo, locating, locateNow, initGeo, trackGeo,
     reload, loadNow, loadAllPorts, loadAreaCoords, setOnLoaded,
+    applyLocalState, serverOnline, updateServerOnline,
   };
 }

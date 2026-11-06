@@ -1,0 +1,10 @@
+[Unit]
+Description=charge-node 每日凌晨 3 点静默更新
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

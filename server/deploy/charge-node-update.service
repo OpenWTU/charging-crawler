@@ -1,0 +1,11 @@
+[Unit]
+Description=charge-node 每日静默更新（拉 GHCR 新镜像，失败自动回退）
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+# 默认跟进 latest；要固定 tag 改为 Environment=UPDATE_TAG=v1.11.40
+Environment=UPDATE_TAG=latest
+ExecStart=/bin/bash /opt/charge-node/update-node.sh ${UPDATE_TAG}
+# 失败也写日志，供第二天人工查看

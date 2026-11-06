@@ -3,6 +3,8 @@ package com.test19124.charging;
 import android.content.Context;
 import android.content.pm.PackageInfo;
 
+import com.test19124.charging.net.NodeDiscovery;
+
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -22,10 +24,16 @@ import javax.crypto.spec.SecretKeySpec;
 /** 云端上传（HMAC 来源校验）与版本检查/下载。 */
 public final class Cloud {
 
+    /** 内置兜底（保留作兼容；实际请求走 NodeDiscovery.currentBase()） */
     public static final String BASE = "https://charge.lizishuo.cn/";
     private static final String UA = "ChargingPileApp";
 
     private Cloud() {
+    }
+
+    /** 当前节点完整 URL（末尾带 /）；未初始化时退化为 BASE */
+    private static String base() {
+        return NodeDiscovery.currentBase() + "/";
     }
 
     public static int versionCode(Context ctx) {
@@ -102,7 +110,7 @@ public final class Cloud {
         new SecureRandom().nextBytes(nonceBytes);
         String nonce = hex(nonceBytes);
         String sig = hmac(ts + "\n" + nonce + "\n", raw, secret);
-        HttpURLConnection conn = (HttpURLConnection) new URL(BASE + "api/snapshot").openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(base() + "api/snapshot").openConnection();
         conn.setRequestMethod("POST");
         conn.setConnectTimeout(10000);
         conn.setReadTimeout(15000);
@@ -138,7 +146,7 @@ public final class Cloud {
         b.put("model", android.os.Build.MODEL);
         b.put("app_version", versionName(ctx));
         byte[] raw = b.toString().getBytes(StandardCharsets.UTF_8);
-        HttpURLConnection conn = (HttpURLConnection) new URL(BASE + "api/device/register").openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(base() + "api/device/register").openConnection();
         conn.setRequestMethod("POST");
         conn.setConnectTimeout(10000);
         conn.setReadTimeout(10000);
@@ -218,7 +226,7 @@ public final class Cloud {
 
     public static JSONObject fetchNowCoords(double lat, double lng) throws Exception {
         HttpURLConnection conn = (HttpURLConnection)
-                new URL(BASE + "api/now?lat=" + lat + "&lng=" + lng).openConnection();
+                new URL(base() + "api/now?lat=" + lat + "&lng=" + lng).openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(12000);
         conn.setRequestProperty("User-Agent", UA);
@@ -238,7 +246,7 @@ public final class Cloud {
 
     public static JSONObject fetchControllers() throws Exception {
         HttpURLConnection conn = (HttpURLConnection)
-                new URL(BASE + "api/controllers").openConnection();
+                new URL(base() + "api/controllers").openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(12000);
         conn.setRequestProperty("User-Agent", UA);
@@ -258,7 +266,7 @@ public final class Cloud {
 
     public static JSONObject fetchAreaCoords() throws Exception {
         HttpURLConnection conn = (HttpURLConnection)
-                new URL(BASE + "api/area-coords").openConnection();
+                new URL(base() + "api/area-coords").openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(12000);
         conn.setRequestProperty("User-Agent", UA);
@@ -278,7 +286,7 @@ public final class Cloud {
 
     public static JSONObject fetchAreasPorts() throws Exception {
         HttpURLConnection conn = (HttpURLConnection)
-                new URL(BASE + "api/areas-ports").openConnection();
+                new URL(base() + "api/areas-ports").openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(12000);
         conn.setRequestProperty("User-Agent", UA);
@@ -299,7 +307,7 @@ public final class Cloud {
     public static JSONObject fetchAreaPorts(String area) throws Exception {
         String q = java.net.URLEncoder.encode(area == null ? "" : area, "UTF-8");
         HttpURLConnection conn = (HttpURLConnection)
-                new URL(BASE + "api/area-ports?area=" + q).openConnection();
+                new URL(base() + "api/area-ports?area=" + q).openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(12000);
         conn.setRequestProperty("User-Agent", UA);
@@ -318,7 +326,7 @@ public final class Cloud {
     }
 
     public static JSONObject fetchNow() throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(BASE + "api/now").openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(base() + "api/now").openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(12000);
         conn.setRequestProperty("User-Agent", UA);
@@ -337,7 +345,7 @@ public final class Cloud {
     }
 
     public static JSONObject fetchAnalytics() throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(BASE + "api/analytics").openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(base() + "api/analytics").openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(15000);
         conn.setRequestProperty("User-Agent", UA);
@@ -355,9 +363,37 @@ public final class Cloud {
         }
     }
 
+    /**
+     * 单区历史（{@code /api/history?area=&limit=}）：
+     * 返回 {@code {ok, area, rows:[{idle,total,charging,fault,t}]}}，rows 按时间升序。
+     *
+     * <p>limit 与后端一致夹到 1..1000（后端还有自己的 max(1,min(n,1000)) 兜底）。</p>
+     */
+    public static JSONObject fetchHistory(String area, int limit) throws Exception {
+        int n = Math.max(1, Math.min(limit, 1000));
+        String q = java.net.URLEncoder.encode(area == null ? "" : area, "UTF-8");
+        HttpURLConnection conn = (HttpURLConnection)
+                new URL(base() + "api/history?limit=" + n + "&area=" + q).openConnection();
+        conn.setConnectTimeout(8000);
+        conn.setReadTimeout(15000);
+        conn.setRequestProperty("User-Agent", UA);
+        try {
+            InputStream in = conn.getInputStream();
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] b = new byte[8192];
+            int len;
+            while ((len = in.read(b)) > 0) {
+                buf.write(b, 0, len);
+            }
+            return new JSONObject(new String(buf.toByteArray(), StandardCharsets.UTF_8));
+        } finally {
+            conn.disconnect();
+        }
+    }
+
     /** 服务器概览（token_pool/health 字段的唯一来源）：/api/overview。 */
     public static JSONObject fetchOverview() throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(BASE + "api/overview").openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(base() + "api/overview").openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(12000);
         conn.setRequestProperty("User-Agent", UA);
@@ -379,7 +415,7 @@ public final class Cloud {
     public static JSONObject fetchFreeRate(int days) throws Exception {
         int d = days < 1 ? 1 : (days > 30 ? 30 : days);
         HttpURLConnection conn = (HttpURLConnection)
-                new URL(BASE + "api/free-rate?days=" + d).openConnection();
+                new URL(base() + "api/free-rate?days=" + d).openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(12000);
         conn.setRequestProperty("User-Agent", UA);
@@ -401,7 +437,7 @@ public final class Cloud {
     public static JSONObject fetchPile(String deviceHex) throws Exception {
         String q = java.net.URLEncoder.encode(deviceHex == null ? "" : deviceHex.trim(), "UTF-8");
         HttpURLConnection conn = (HttpURLConnection)
-                new URL(BASE + "api/pile/" + q).openConnection();
+                new URL(base() + "api/pile/" + q).openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(12000);
         conn.setRequestProperty("User-Agent", UA);
@@ -420,7 +456,7 @@ public final class Cloud {
     }
 
     public static JSONObject fetchVersion() throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(BASE + "api/version").openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(base() + "api/version").openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(8000);
         conn.setRequestProperty("User-Agent", UA);
@@ -440,11 +476,11 @@ public final class Cloud {
 
     /** 下载 APK 到 cacheDir，返回本地文件。 */
     public static File downloadApk(String apkPath, File cacheDir, String expectedSha) throws Exception {
-        String url = apkPath.startsWith("http") ? apkPath : BASE + apkPath.replaceFirst("^/", "");
+        String url = apkPath.startsWith("http") ? apkPath : base() + apkPath.replaceFirst("^/", "");
         if (expectedSha == null || !expectedSha.matches("[0-9a-fA-F]{64}")) {
             throw new IOException("缺少有效的 sha256，已拒绝下载");
         }
-        if (!url.startsWith(BASE)) {
+        if (!url.startsWith(base())) {
             throw new IOException("非法的安装包地址");
         }
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();

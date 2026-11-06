@@ -200,6 +200,10 @@ public final class RefreshService {
                 DebugLog.add("本地没有充电区数据，跳过上传");
                 return;
             }
+            // ★ 区域数据已就绪：先推一版给前端渲染，不等端口补全和上传。
+            // 补全 39 个设备端口要 sleep 200ms × n（约 8 秒），再上传 1~2 秒，
+            // 用户按下刷新后原本要干等十几秒才看到数据。
+            pushLocalState(state);
             try {
                 JSONObject cj = Cloud.fetchControllers();
                 JSONArray cs = cj.optJSONArray("controllers");
@@ -248,6 +252,8 @@ public final class RefreshService {
             } catch (Exception ex) {
                 DebugLog.add("端口获取失败: " + ex.getMessage());
             }
+            // ★ 端口明细已补全：再推一版，前端可立即显示端口级状态（仍不等上传）
+            pushLocalState(state);
             // 先落 pending 再上传：上传失败或进程被杀，下次刷新都能原样补传
             store.savePendingUpload(state.toString());
             try {
@@ -276,6 +282,28 @@ public final class RefreshService {
             refreshProgress = "";
             postRefreshDone(true, "");
             uploading = false;
+        }
+    }
+
+    /**
+     * 把当前快照立即推给前端渲染（不等端口补全、也不等上传完成）。
+     *
+     * <p>背景：原来只有 {@code postRefreshDone} 一个完成信号，而它在「补全 39 个设备端口
+     * （每个 sleep 200ms ≈ 8 秒）+ 上传（1~2 秒）」之后才发，用户按下刷新要干等十几秒。
+     * 现在区域数据一到就先推一版（前端立刻显示区域列表与空闲数），端口补全后再推一版。</p>
+     *
+     * <p>载荷就是 {@code AndroidHost.getState()} 的同一份 JSON，前端 {@code __onLocalState}
+     * 直接复用渲染逻辑，字段语义完全一致。</p>
+     */
+    private void pushLocalState(JSONObject state) {
+        if (state == null) {
+            return;
+        }
+        try {
+            host.postJs("window.__onLocalState && window.__onLocalState("
+                    + JSONObject.quote(state.toString()) + ")");
+        } catch (Exception e) {
+            DebugLog.add("推送本地快照失败: " + e.getMessage());
         }
     }
 

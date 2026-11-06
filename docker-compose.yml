@@ -1,0 +1,74 @@
+# charging-crawler 一键部署
+#
+# 新节点：
+#   docker compose pull && docker compose up -d
+# 构建本地镜像（开发）：
+#   docker compose build
+#
+# 数据挂载：./data 由部署机决定（服务器上指向 /var/lib/charge-cloud 复用现有数据）
+# 前端已打进镜像（与后端同 tag 发布），节点间不会前端版本不一致。
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: ghcr.io/openwtu/charging-crawler:latest
+    container_name: charge-node
+    restart: unless-stopped
+    # 以 www-data（uid 33）运行：复用 /var/lib/charge-cloud 的数据时才有写权限
+    user: "33:33"
+    ports:
+      - "127.0.0.1:8791:8791"   # HTTP，仅绑本机，由 Nginx 反代
+      - "4001:4001"             # libp2p（P2P_ENABLED=true 时用）
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "8791"
+      DATABASE_PATH: /data/charge.db
+      DATABASE_READONLY: "false"
+      AUTO_WORKER: "true"
+      TOKEN_KEY_FILE: /data/token_key
+      VERSION_FILE: /data/version.json
+      APK_DIR: /data/download
+      WEB_DIST: /web
+      P2P_ENABLED: ${P2P_ENABLED:-false}
+      P2P_LISTEN_PORT: "4001"
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+      P2P_KEY_FILE: /data/p2p_key
+      P2P_WHITELIST_CACHE: /data/p2p_peers.json
+      P2P_MDNS: "false"
+    volumes:
+      # 数据目录：SQLite 库 + token_key + version.json + download + p2p_key
+      - ${DATA_DIR:-./data}:/data
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # P2P 独立进程（可选，默认不启动）：
+  #   docker compose --profile p2p up -d
+  p2p:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: ghcr.io/openwtu/charging-crawler:latest
+    container_name: charge-node-p2p
+    restart: unless-stopped
+    profiles: ["p2p"]
+    command: ["node", "dist/p2p.js"]
+    ports:
+      - "4001:4001"
+    environment:
+      NODE_ENV: production
+      P2P_ENABLED: "true"
+      P2P_LISTEN_PORT: "4001"
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+    mem_limit: 256m
+    depends_on:
+      app:
+        condition: service_healthy

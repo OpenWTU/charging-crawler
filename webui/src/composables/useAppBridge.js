@@ -17,6 +17,7 @@ const GLOBAL_HOOKS = [
   '__onRefreshDone',
   '__onUploadDone',
   '__onOverview',
+  '__onLocalState',
   '__onUpdateChecking',
   '__onUpdateInfo',
   '__onUpdateError',
@@ -53,6 +54,8 @@ export function useAppBridge(handlers = {}) {
     window.__onRefreshDone = handlers.refreshDone;
     window.__onUploadDone = handlers.uploadDone;
     window.__onOverview = handlers.overview;
+    // 原生抓取完成瞬间推送的本地快照（不等端口补全/上传），用于立即渲染
+    window.__onLocalState = handlers.localState;
     window.__onUpdateChecking = handlers.updateChecking;
     window.__onUpdateInfo = handlers.updateInfo;
     window.__onUpdateError = handlers.updateError;

@@ -186,6 +186,27 @@ public final class BridgeNetClient {
         });
     }
 
+    /**
+     * 单区历史 → window.__onHistory(json)。
+     *
+     * <p>失败时回 {@code {"ok":false,"error":"..."}}，前端据此显示错误态而不是空图。
+     * 与 analytics 共用 analyticsPool（同属低频分析类请求，不挤占端口池）。</p>
+     */
+    public void history(String area, int limit) {
+        final String a = area == null ? "" : area;
+        final int n = limit;
+        host.analyticsPool().execute(() -> {
+            String json;
+            try {
+                json = Cloud.fetchHistory(a, n).toString();
+            } catch (Exception e) {
+                json = "{\"ok\":false,\"error\":\"历史数据加载失败\"}";
+            }
+            host.postJs("window.__onHistory && window.__onHistory("
+                    + JSONObject.quote(json) + ")");
+        });
+    }
+
     /** 预测载荷带上 seq，供前端按最新请求过滤。 */
     private static String nowPayload(String json, int seq) {
         try {
