@@ -207,6 +207,25 @@ public final class BridgeNetClient {
         });
     }
 
+    /**
+     * 公开状态页 → window.__onStatus(json)。
+     *
+     * <p>失败时回 {@code {"ok":false,"error":"..."}}，前端据此显示错误态。
+     * 与 analytics/history 共用 analyticsPool（同属低频类请求）。</p>
+     */
+    public void status() {
+        host.analyticsPool().execute(() -> {
+            String json;
+            try {
+                json = Cloud.fetchStatus().toString();
+            } catch (Exception e) {
+                json = "{\"ok\":false,\"error\":\"状态读取失败\"}";
+            }
+            host.postJs("window.__onStatus && window.__onStatus("
+                    + JSONObject.quote(json) + ")");
+        });
+    }
+
     /** 预测载荷带上 seq，供前端按最新请求过滤。 */
     private static String nowPayload(String json, int seq) {
         try {

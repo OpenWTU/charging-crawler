@@ -391,6 +391,26 @@ public final class Cloud {
         }
     }
 
+    /** 公开状态页（/status）：token 池 / worker / 节点 / 拉黑等监控数据。 */
+    public static JSONObject fetchStatus() throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(base() + "status").openConnection();
+        conn.setConnectTimeout(8000);
+        conn.setReadTimeout(12000);
+        conn.setRequestProperty("User-Agent", UA);
+        try {
+            InputStream in = conn.getInputStream();
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] b = new byte[8192];
+            int n;
+            while ((n = in.read(b)) > 0) {
+                buf.write(b, 0, n);
+            }
+            return new JSONObject(new String(buf.toByteArray(), StandardCharsets.UTF_8));
+        } finally {
+            conn.disconnect();
+        }
+    }
+
     /** 服务器概览（token_pool/health 字段的唯一来源）：/api/overview。 */
     public static JSONObject fetchOverview() throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(base() + "api/overview").openConnection();

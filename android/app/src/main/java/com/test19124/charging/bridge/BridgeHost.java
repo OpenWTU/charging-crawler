@@ -86,6 +86,9 @@ public interface BridgeHost {
     /** 单区历史（/api/history?area=&limit=）→ window.__onHistory。 */
     void history(String area, int limit);
 
+    /** 公开状态页（/status）→ window.__onStatus。 */
+    void status();
+
     /** 下载并安装更新包。 */
     void startUpdate(String apkPath, String sha256);
 }

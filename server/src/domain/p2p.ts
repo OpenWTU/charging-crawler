@@ -33,6 +33,7 @@ import {
   P2P_MDNS,
   P2P_WHITELIST_CACHE,
   P2P_WHITELIST_URL,
+  SERVER_VERSION,
 } from '../config.js';
 import { sql } from '../db/index.js';
 import { getDb } from '../db/index.js';
@@ -45,6 +46,7 @@ const TOPIC = 'charge-snapshots';
 export interface SnapshotMessage {
   v: 1;
   sender: string;
+  sender_version?: string;
   ts: string;
   body_sha256: string;
   payload: Record<string, unknown>;
@@ -54,6 +56,8 @@ export interface P2pPeerInfo {
   peer_id: string;
   addr: string | null;
   connected: boolean;
+  version: string | null;
+  last_seen: string | null;
 }
 
 export interface P2pHandle {
@@ -167,6 +171,9 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
   const pubsub = node.services.pubsub as PubSub;
   pubsub.subscribe(TOPIC);
 
+  // 记录最近收到消息的节点版本/时间（用于 /status 展示节点详情）
+  const peerMeta = new Map<string, { version: string; last_seen: string }>();
+
   const handle: P2pHandle = {
     peerId: node.peerId.toString(),
     addresses: node.getMultiaddrs().map((a) => a.toString()),
@@ -175,6 +182,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
       const full: SnapshotMessage = {
         v: 1,
         sender: node.peerId.toString(),
+        sender_version: SERVER_VERSION,
         ...msg,
       };
       await pubsub.publish(TOPIC, new TextEncoder().encode(JSON.stringify(full)));
@@ -192,16 +200,26 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
         }
         if (msg.v !== 1) return;
         if (!whitelist.has(msg.sender)) return;
+        // 记录节点版本与最近活跃时间
+        peerMeta.set(msg.sender, {
+          version: msg.sender_version ?? 'unknown',
+          last_seen: msg.ts,
+        });
         void cb(msg);
       });
     },
 
     peers() {
-      return node.getPeers().map((p) => ({
-        peer_id: p.toString(),
-        addr: null,
-        connected: true,
-      }));
+      return node.getPeers().map((p) => {
+        const meta = peerMeta.get(p.toString());
+        return {
+          peer_id: p.toString(),
+          addr: null,
+          connected: true,
+          version: meta?.version ?? null,
+          last_seen: meta?.last_seen ?? null,
+        };
+      });
     },
 
     async dial(addr) {
@@ -219,6 +237,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
 /* ---------------- 全局实例（集成点） ---------------- */
 
 let p2pInstance: P2pHandle | null = null;
+let p2pWhitelistSize = 0;
 
 /** 收到广播 → 落库（body_sha256 去重）。白名单已在 onSnapshot 层校验。 */
 async function ingestSnapshot(msg: SnapshotMessage): Promise<void> {
@@ -241,6 +260,7 @@ export async function initP2p(): Promise<P2pHandle | null> {
   if (p2pInstance) return p2pInstance;
   const whitelist = await loadWhitelist(P2P_WHITELIST_URL, P2P_WHITELIST_CACHE);
   p2pInstance = await startP2p({ whitelist });
+  p2pWhitelistSize = whitelist.size;
   p2pInstance.onSnapshot(ingestSnapshot);
   logger.info({ peerId: p2pInstance.peerId, whitelist: whitelist.size }, '[p2p] 已启动');
   return p2pInstance;
@@ -268,6 +288,14 @@ export function p2pPeers(): P2pPeerInfo[] {
 
 export function p2pSelfId(): string | null {
   return p2pInstance ? p2pInstance.peerId : null;
+}
+
+export function p2pSelfAddrs(): string[] {
+  return p2pInstance ? p2pInstance.addresses : [];
+}
+
+export function p2pWhitelistCount(): number {
+  return p2pWhitelistSize;
 }
 
 export async function stopP2p(): Promise<void> {

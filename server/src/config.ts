@@ -142,3 +142,6 @@ export const P2P_MDNS = envBool('P2P_MDNS', false);
 
 /** 读写模式下是否自动启动抓取 worker（P8 切换后默认开） */
 export const AUTO_WORKER = envBool('AUTO_WORKER', true);
+
+/** 后端版本（CI 构建时注入 tag；本地开发默认 dev） */
+export const SERVER_VERSION = env('SERVER_VERSION', 'dev');

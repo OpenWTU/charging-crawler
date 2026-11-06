@@ -144,6 +144,12 @@ public final class AndroidHost {
         host.history(area, limit);
     }
 
+    /** 公开状态页（/status）：回调 window.__onStatus(json)。 */
+    @JavascriptInterface
+    public void getStatus() {
+        host.status();
+    }
+
     @JavascriptInterface
     public void startUpdate(String apkPath, String sha256) {
         host.startUpdate(apkPath, sha256);
