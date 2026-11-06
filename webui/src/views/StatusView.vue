@@ -64,7 +64,8 @@
       <section class="status-card">
         <h3>节点（{{ data.p2p_enabled ? 'P2P 已启用' : 'P2P 未启用' }}）</h3>
         <dl class="kv">
-          <div><dt>本机 peerId</dt><dd class="mono">{{ short(data.peers?.self) }}</dd></div>
+          <div><dt>当前节点名称</dt><dd>{{ data.peers?.self_name || short(data.peers?.self) }}</dd></div>
+          <div><dt>当前节点 peerId</dt><dd class="mono">{{ short(data.peers?.self) }}</dd></div>
           <div><dt>白名单节点</dt><dd>{{ data.peers?.whitelist ?? 0 }}</dd></div>
           <div><dt>在线节点</dt><dd>{{ data.peers?.online ?? 0 }}</dd></div>
         </dl>
@@ -77,7 +78,7 @@
               </span>
             </div>
             <div class="peer-meta">
-              <span class="mono">v{{ n.version ?? '?' }}</span>
+              <span class="mono">{{ fmtV(n.version) }}</span>
               <small>{{ n.last_seen ? '活跃 ' + n.last_seen : '暂无活跃' }}</small>
             </div>
             <div v-if="n.stats" class="peer-stats">
@@ -160,6 +161,12 @@ function fmtEpoch(sec) {
   const d = new Date(n * 1000);
   const p = (x) => String(x).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function fmtV(v) {
+  if (!v) return '—';
+  const s = String(v);
+  return s.startsWith('v') ? s : 'v' + s;
 }
 
 function short(id) {

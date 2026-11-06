@@ -18,7 +18,7 @@ import { banlistStats } from '../domain/banlist.js';
 import { nowStr } from '../domain/store.js';
 import { DATABASE_PATH, P2P_ENABLED, SERVER_VERSION } from '../config.js';
 import { getDb } from '../db/index.js';
-import { p2pPeers, p2pSelfAddrs, p2pSelfId, p2pWhitelistCount } from '../domain/p2p.js';
+import { p2pPeers, p2pSelfAddrs, p2pSelfId, p2pSelfName, p2pWhitelistCount } from '../domain/p2p.js';
 
 export async function registerStatusRoutes(app: FastifyInstance): Promise<void> {
   app.get('/status', async (_req, reply) => {
@@ -83,6 +83,7 @@ export async function registerStatusRoutes(app: FastifyInstance): Promise<void> 
       },
       peers: {
         self: p2pSelfId(),
+        self_name: p2pSelfName(),
         self_addrs: p2pSelfAddrs(),
         online: p2pPeers().length,
         whitelist: p2pWhitelistCount(),

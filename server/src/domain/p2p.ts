@@ -386,6 +386,12 @@ export function p2pSelfId(): string | null {
   return p2pInstance ? p2pInstance.peerId : null;
 }
 
+/** 本机节点名称（NODE_NAME 或 peerId 前 8 位） */
+export function p2pSelfName(): string {
+  const id = p2pInstance ? p2pInstance.peerId : '';
+  return NODE_NAME || (id ? id.slice(0, 8) : '');
+}
+
 export function p2pSelfAddrs(): string[] {
   return p2pInstance ? p2pInstance.addresses : [];
 }
