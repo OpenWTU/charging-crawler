@@ -24,6 +24,11 @@ install -m 644 charge-backup.cron /etc/cron.d/charge-backup
 install -m 644 charge-bundle.cron /etc/cron.d/charge-bundle
 ```
 
+> 两个脚本默认按 root 运行（脚本内 `chown root:root`）。在**非 root** 环境验证脚本本身
+> （本机调试、容器、Git Bash）时，请设 `CHARGE_SKIP_CHOWN=1`，否则 `set -e` 会因
+> `chown: invalid user: 'root:root'` 直接中断；单元测试 `test_backup_scripts_with_temp_dirs`
+> 就是这样调用的。
+
 权限：
 
 - 两个 `.sh` 必须 755（cron 直接执行）；`/etc/cron.d/*` 用 644/root。
