@@ -18,12 +18,22 @@
     "migrate:dry": "tsx src/db/migrate-cli.ts --dry-run"
   },
   "dependencies": {
+    "@chainsafe/libp2p-gossipsub": "^14.1.2",
+    "@chainsafe/libp2p-noise": "^16.1.5",
+    "@chainsafe/libp2p-yamux": "^7.0.4",
     "@fastify/cookie": "^11.0.2",
     "@fastify/static": "^8.0.4",
     "@fastify/swagger": "^9.4.2",
     "@fastify/swagger-ui": "^5.2.1",
+    "@libp2p/bootstrap": "^11.0.47",
+    "@libp2p/identify": "^3.0.39",
+    "@libp2p/interface": "^2.11.0",
+    "@libp2p/mdns": "^11.0.47",
+    "@libp2p/tcp": "^10.1.19",
+    "@multiformats/multiaddr": "^13.0.3",
     "fastify": "^5.2.1",
     "kysely": "^0.28.0",
+    "libp2p": "^2.10.0",
     "pino": "^9.6.0",
     "zod": "^3.24.1"
   },
