@@ -52,6 +52,19 @@ if [ "$NEW_ID" = "$OLD_ID" ]; then
   exit 0
 fi
 
+# 2.5 同步 version.json（发版时 release-apk 会把它作为 Release asset 发布）
+VERSION_JSON_URL="https://github.com/OpenWTU/charging-crawler/releases/download/$TAG/version.json"
+if curl -fsSL --max-time 20 -o /tmp/version.json.new "$VERSION_JSON_URL"; then
+  DATA_DIR="${DATA_DIR:-/var/lib/charge-cloud}"
+  if [ -s /tmp/version.json.new ]; then
+    cp /tmp/version.json.new "$DATA_DIR/version.json"
+    chown 33:33 "$DATA_DIR/version.json" 2>/dev/null || true
+    log "version.json 已同步（$TAG）"
+  fi
+else
+  log "version.json 下载失败（跳过，保持现有）"
+fi
+
 # 3. 重建容器
 cd "$COMPOSE_DIR" || exit 1
 if ! docker compose up -d 2>&1; then

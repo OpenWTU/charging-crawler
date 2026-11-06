@@ -86,8 +86,27 @@ jobs:
           ls -lh android/build/app-debug.apk
           sha256sum android/build/app-debug.apk
 
-      - name: 发布 Release 并上传 APK
+      - name: 生成 version.json（供服务器自动同步）
+        run: |
+          SHA=$(sha256sum android/build/app-debug.apk | cut -d' ' -f1)
+          SIZE=$(du -h android/build/app-debug.apk | cut -f1)
+          cat > version.json <<EOF
+          {
+            "versionCode": $VERSION_CODE,
+            "versionName": "$VERSION_NAME",
+            "apkPath": "https://github.com/OpenWTU/charging-crawler/releases/download/${{ github.ref_name }}/app-debug.apk",
+            "sizeText": "$SIZE",
+            "sha256": "$SHA",
+            "releasedAt": "$(date '+%Y-%m-%d %H:%M')",
+            "changelog": []
+          }
+          EOF
+          cat version.json
+
+      - name: 发布 Release（上传 APK + version.json）
         uses: softprops/action-gh-release@v2
         with:
-          files: android/build/app-debug.apk
+          files: |
+            android/build/app-debug.apk
+            version.json
           generate_release_notes: true
