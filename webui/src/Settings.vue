@@ -14,7 +14,7 @@
         </van-cell>
         <van-cell
           title="重新获取令牌"
-          :label="reacquiring ? '抓取中：打开微信 → 快充公众号 → 单车充电' : '打开微信 → 快充公众号 → 单车充电'"
+          :label="reacquiring ? '抓取中：打开微信 → 公众号「蛮来电」 → 单车充电' : '打开微信 → 公众号「蛮来电」 → 单车充电'"
           is-link
           :class="{ 'is-busy': reacquiring }"
           @click="reacquire"

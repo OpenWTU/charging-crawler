@@ -75,7 +75,7 @@ public final class CaptureFlow {
         i.putExtra(CaptureVpnService.EXTRA_IPS, pendingIps);
         i.putExtra(CaptureVpnService.EXTRA_DEBUG, pendingDebug);
         a.startService(i);
-        Toast.makeText(a, "抓包已开启，请到微信打开快充页面", Toast.LENGTH_LONG).show();
+        Toast.makeText(a, "抓包已开启，请到微信打开公众号“蛮来电”", Toast.LENGTH_LONG).show();
     }
 
     /** VPN 授权回调（requestCode 必须匹配本次流程）。 */

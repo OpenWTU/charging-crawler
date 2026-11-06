@@ -260,8 +260,14 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
 
     onSnapshot(cb) {
       pubsub.addEventListener('message', (evt: CustomEvent<Message>) => {
-        const { topic, data } = evt.detail;
+        const detail = evt.detail;
+        const { topic, data } = detail;
         if (topic !== TOPIC) return;
+        // 鉴权用 libp2p 签名验证的来源 peerId（SignedMessage.from，不可伪造），
+        // 而不是消息内容里自填的 sender（可伪造）
+        if (detail.type !== 'signed') return;
+        const fromId = detail.from.toString();
+        if (!whitelist.has(fromId)) return;
         let msg: SnapshotMessage;
         try {
           msg = JSON.parse(new TextDecoder().decode(data));
@@ -269,11 +275,10 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
           return;
         }
         if (msg.v !== 1) return;
-        if (!whitelist.has(msg.sender)) return;
         // 记录节点版本与最近活跃时间
-        const prev = peerMeta.get(msg.sender);
-        peerMeta.set(msg.sender, {
-          name: prev?.name ?? msg.sender.slice(0, 8),
+        const prev = peerMeta.get(fromId);
+        peerMeta.set(fromId, {
+          name: prev?.name ?? fromId.slice(0, 8),
           version: msg.sender_version ?? prev?.version ?? 'unknown',
           last_seen: msg.ts,
           stats: prev?.stats ?? null,
@@ -283,8 +288,12 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
 
       // 状态心跳：更新节点元数据（名称/版本/统计）
       pubsub.addEventListener('message', (evt: CustomEvent<Message>) => {
-        const { topic, data } = evt.detail;
+        const detail = evt.detail;
+        const { topic, data } = detail;
         if (topic !== STATUS_TOPIC) return;
+        if (detail.type !== 'signed') return;
+        const fromId = detail.from.toString();
+        if (!whitelist.has(fromId)) return;
         let msg: StatusMessage;
         try {
           msg = JSON.parse(new TextDecoder().decode(data));
@@ -292,9 +301,8 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
           return;
         }
         if (msg.v !== 1) return;
-        if (!whitelist.has(msg.sender)) return;
-        peerMeta.set(msg.sender, {
-          name: msg.name || msg.sender.slice(0, 8),
+        peerMeta.set(fromId, {
+          name: msg.name || fromId.slice(0, 8),
           version: msg.version || 'unknown',
           last_seen: msg.ts,
           stats: msg.stats ?? null,

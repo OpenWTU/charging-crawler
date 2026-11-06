@@ -48,7 +48,7 @@
       <div class="steps">
         <span class="step"><i>1</i>打开微信</span>
         <van-icon name="arrow" class="step-arrow" />
-        <span class="step"><i>2</i>快充公众号</span>
+        <span class="step"><i>2</i>微信公众号"蛮来电"</span>
         <van-icon name="arrow" class="step-arrow" />
         <span class="step"><i>3</i>单车充电</span>
       </div>
