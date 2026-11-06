@@ -7,7 +7,7 @@ export default [
     ignores: [
       'dist/**',
       'node_modules/**',
-      '../cloud/web/dist/**',
+      'dist/**',
       '../android/app/src/main/assets/www/**',
     ],
   },

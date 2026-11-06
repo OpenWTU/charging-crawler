@@ -4,16 +4,9 @@ android/app/build/
 *.apk
 *.idsig
 *.keystore
-# python
+# python（仅 android/build.py 构建脚本）
 __pycache__/
 *.pyc
-.pytest_cache/
-# data / secrets
-cloud/data/*.db
-cloud/data/*.db-*
-cloud/data/download/
-cloud/data/upload_secret.txt
-cloud/data/version.json
 # node
 webui/node_modules/
 webui/dist/
@@ -32,5 +25,3 @@ server/data/
 data/
 shots/app-token*
 
-# 本机部署配置（含服务器地址与密钥路径）
-deploy.local.ps1

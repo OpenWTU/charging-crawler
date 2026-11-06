@@ -138,7 +138,7 @@ App 上传 → 节点 A 落库 → gossipsub 广播（topic "charge-snapshots"�
 
 ```bash
 # 前端
-cd webui && pnpm install && pnpm run build   # 输出到 ../cloud/web/dist
+cd webui && pnpm install && pnpm run build   # 输出到 webui/dist
 
 # APK（本机，需 Android SDK/JDK + release keystore）
 CHARGE_VERSION_CODE=2000000 CHARGE_VERSION_NAME=2.0.0 python android/build.py

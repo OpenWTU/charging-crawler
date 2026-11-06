@@ -57,7 +57,7 @@ def main():
     no_version_json = "--no-version-json" in args
     allow_stale_web = "--allow-stale-web" in args
     # 同步最新 Web 产物到 assets，并清掉旧 hash 文件，避免 APK 膨胀
-    web_dist = ROOT.parent / "cloud" / "web" / "dist"
+    web_dist = ROOT.parent / "webui" / "dist"
     www = SRC / "assets" / "www"
     if not (web_dist / "app.html").is_file() or not (web_dist / "assets").is_dir():
         raise SystemExit(f"缺少 Web 产物（{web_dist}）：请先在 webui 执行 vite build")
@@ -69,7 +69,7 @@ def main():
         dist_mtime = (web_dist / "app.html").stat().st_mtime
         if src_newest > dist_mtime + 60:
             raise SystemExit(
-                "webui/src 比 cloud/web/dist 新（疑似未 vite build）：先构建前端，"
+                "webui/src 比 webui/dist 新（疑似未 vite build）：先构建前端，"
                 "或加 --allow-stale-web 仅做本地验证")
     if BUILD.exists():
         shutil.rmtree(BUILD)

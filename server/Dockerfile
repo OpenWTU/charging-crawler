@@ -31,9 +31,9 @@ RUN npm install -g pnpm@9 && pnpm install --prod --frozen-lockfile=false && pnpm
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/migrations ./migrations
 
-# 前端产物打进镜像（cloud/web/dist 即 vite 输出：index.html + app.html + assets/），
+# 前端产物打进镜像（webui/dist 即 vite 输出：index.html + app.html + assets/），
 # 与后端同 tag 发布，节点间不会前端版本不一致。
-COPY cloud/web/dist /web
+COPY webui/dist /web
 
 # 非 root 运行
 RUN mkdir -p /data /apk \

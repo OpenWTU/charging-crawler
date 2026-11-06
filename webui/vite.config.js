@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [vue()],
   base: './',
   build: {
-    outDir: fileURLToPath(new URL('../cloud/web/dist', import.meta.url)),
+    outDir: 'dist',
     emptyOutDir: true,
     assetsDir: 'assets',
     rollupOptions: {
