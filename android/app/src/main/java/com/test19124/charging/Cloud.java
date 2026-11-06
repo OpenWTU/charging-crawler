@@ -355,6 +355,34 @@ public final class Cloud {
         }
     }
 
+    /**
+     * 单区历史（{@code /api/history?area=&limit=}）：
+     * 返回 {@code {ok, area, rows:[{idle,total,charging,fault,t}]}}，rows 按时间升序。
+     *
+     * <p>limit 与后端一致夹到 1..1000（后端还有自己的 max(1,min(n,1000)) 兜底）。</p>
+     */
+    public static JSONObject fetchHistory(String area, int limit) throws Exception {
+        int n = Math.max(1, Math.min(limit, 1000));
+        String q = java.net.URLEncoder.encode(area == null ? "" : area, "UTF-8");
+        HttpURLConnection conn = (HttpURLConnection)
+                new URL(BASE + "api/history?limit=" + n + "&area=" + q).openConnection();
+        conn.setConnectTimeout(8000);
+        conn.setReadTimeout(15000);
+        conn.setRequestProperty("User-Agent", UA);
+        try {
+            InputStream in = conn.getInputStream();
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] b = new byte[8192];
+            int len;
+            while ((len = in.read(b)) > 0) {
+                buf.write(b, 0, len);
+            }
+            return new JSONObject(new String(buf.toByteArray(), StandardCharsets.UTF_8));
+        } finally {
+            conn.disconnect();
+        }
+    }
+
     /** 服务器概览（token_pool/health 字段的唯一来源）：/api/overview。 */
     public static JSONObject fetchOverview() throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(BASE + "api/overview").openConnection();

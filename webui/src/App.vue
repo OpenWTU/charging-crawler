@@ -62,6 +62,10 @@ ref="homeRef" :live="live" :active="tab === TAB.LIVE" :now-tick="nowTick"
           <AnalyticsView :active="tab === TAB.ANALYTICS" :theme="theme" />
         </section>
 
+        <section v-show="tab === TAB.HISTORY">
+          <HistoryView :active="tab === TAB.HISTORY" :theme="theme" :areas="areas" />
+        </section>
+
         <section v-if="isApp" v-show="tab === TAB.TOKEN">
           <TokenPanel :active="tab === TAB.TOKEN" @done="onTokenDone" />
         </section>
@@ -102,6 +106,7 @@ import { showToast } from 'vant';
 import { getSettings, isApp } from './api/index.js';
 import HomeView from './views/HomeView.vue';
 import AnalyticsView from './views/AnalyticsView.vue';
+import HistoryView from './views/HistoryView.vue';
 import TokenPanel from './components/TokenPanel.vue';
 import SettingsSheet from './components/SettingsSheet.vue';
 import UpdateDialog from './components/UpdateDialog.vue';
@@ -117,22 +122,21 @@ import { validGeo, toGcj, writeGeoCache } from './geo.js';
 
 // ---- 标签页：具名 tab，上传令牌开关只增减页签，不再让数字索引漂移 ----
 const TAB = Object.freeze({
-  LIVE: 'live', ANALYTICS: 'analytics', TOKEN: 'token', SETTINGS: 'settings',
+  LIVE: 'live', ANALYTICS: 'analytics', HISTORY: 'history', TOKEN: 'token', SETTINGS: 'settings',
 });
 const uploadTokenOn = ref(true);
 const tab = ref(TAB.LIVE);
 const homeRef = ref(null);
 
 // 页签按「是否连得上服务器」动态增减：
-//   在线 → 实时 / 分析 / 令牌 / 设置（高级功能可用）
+//   在线 → 实时 / 分析 / 历史 / 令牌 / 设置（高级功能可用）
 //   离线 → 实时 / 令牌 / 设置（纯本地基础功能；令牌是本地能力，离线时更需要它）
-// 「分析」要读云端历史聚合，离线时打开只会空白，所以直接不出现。
-// 注：「历史」页签待 Android 侧补 getHistory 桥之后再加（当前 App 模式下
-//     getHistory 直接返回空数组，加了也是空白页）。
+// 分析与历史都要读云端历史数据，离线时打开只会空白，所以直接不出现。
 const tabItems = computed(() => {
   const items = [{ name: TAB.LIVE, icon: 'home-o', label: '实时' }];
   if (serverOnline.value) {
     items.push({ name: TAB.ANALYTICS, icon: 'bar-chart-o', label: '分析' });
+    items.push({ name: TAB.HISTORY, icon: 'chart-trending-o', label: '历史' });
   }
   if (isApp) {
     items.push({ name: TAB.TOKEN, icon: 'shield-o', label: '令牌' });

@@ -199,6 +199,11 @@ public final class ActivityBridgeHost implements BridgeHost {
     }
 
     @Override
+    public void history(String area, int limit) {
+        net.history(area, limit);
+    }
+
+    @Override
     public void startUpdate(String apkPath, String sha256) {
         env.ui().post(() -> updater.download(apkPath, sha256));
     }

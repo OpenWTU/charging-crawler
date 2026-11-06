@@ -138,6 +138,12 @@ public final class AndroidHost {
         host.analytics();
     }
 
+    /** 单区历史（/api/history?area=&limit=）：回调 window.__onHistory(json)。 */
+    @JavascriptInterface
+    public void getHistory(String area, int limit) {
+        host.history(area, limit);
+    }
+
     @JavascriptInterface
     public void startUpdate(String apkPath, String sha256) {
         host.startUpdate(apkPath, sha256);

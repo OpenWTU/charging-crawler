@@ -8,7 +8,7 @@
  */
 import {
   isApp, getJSON, requestJSON, isObj, numOrNull, coordsQuery,
-  awaitGlobalBridge,
+  awaitGlobalBridge, callBridgeJSON,
 } from './transport.js';
 import { normalizeDevices } from './ports.js';
 
@@ -85,12 +85,22 @@ export async function getNow(lat, lng) {
   return { areas: [] };
 }
 
-// 历史数据：网页走 HTTP 接口；App 侧暂无历史桥，返回空列表。
+// 历史数据：网页走 HTTP /api/history；App 走 AndroidHost.getHistory 桥（回调 __onHistory）。
 // 失败时抛错，调用方统一显示「加载失败」。
+// 注意 limit：Android 侧与后端都夹到 1..1000，这里传原始值即可。
 export async function getHistory(name, limit) {
-  if (isApp) return [];
-  const n = Math.min(200, Math.max(1, Number(limit) || 30));
-  const area = encodeURIComponent(String(name == null ? '' : name));
+  const raw = String(name == null ? '' : name);
+  if (!raw) return [];
+  const n = Math.min(1000, Math.max(1, Number(limit) || 30));
+
+  if (isApp) {
+    const host = window.AndroidHost;
+    if (!host || typeof host.getHistory !== 'function') return []; // 老版本 APK 没有这个桥
+    const d = await callBridgeJSON('__onHistory', () => host.getHistory(raw, n), 20000);
+    return Array.isArray(d && d.rows) ? d.rows : [];
+  }
+
+  const area = encodeURIComponent(raw);
   const d = await getJSON('/api/history?limit=' + n + '&area=' + area);
   return Array.isArray(d && d.rows) ? d.rows : [];
 }
