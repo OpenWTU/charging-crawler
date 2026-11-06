@@ -79,6 +79,14 @@ export function bannedSeconds(deviceId: string | null, ip: string): number {
   return 0;
 }
 
+/** 拉黑统计（公开状态页展示） */
+export function banlistStats(): { devices: number; ips: number } {
+  const now = Date.now() / 1000;
+  const dev = [...byDevice.values()].filter((s) => s.bannedUntil > now).length;
+  const ips = [...byIp.values()].filter((s) => s.bannedUntil > now).length;
+  return { devices: dev, ips };
+}
+
 /** 测试用：清空 */
 export function resetBanlist(): void {
   byDevice.clear();

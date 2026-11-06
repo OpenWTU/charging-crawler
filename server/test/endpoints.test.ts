@@ -103,6 +103,19 @@ describe('空库端点行为', () => {
     expect(body.areas).toEqual([]);
   });
 
+  it('/status 公开状态页：token_pool + worker + peers 结构', async () => {
+    const { status, body } = await get('/status');
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.node).toBe('node');
+    expect(body.token_pool).toBeDefined();
+    expect(body.token_pool.count).toBe(0); // 空库
+    expect(body.worker.runs).toBe(0);
+    expect(body.peers.online).toBe(0);
+    expect(body.peers.nodes).toEqual([]);
+    expect(body.banlist.devices).toBe(0);
+  });
+
   it('/api/controllers 空库：count=0', async () => {
     const { status, body } = await get('/api/controllers');
     expect(status).toBe(200);

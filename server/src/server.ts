@@ -16,6 +16,7 @@ import { registerStateRoutes } from './routes/state.js';
 import { registerStaticRoutes } from './routes/static.js';
 import { registerMiscRoutes } from './routes/misc.js';
 import { registerUploadRoutes } from './routes/upload.js';
+import { registerStatusRoutes } from './routes/status.js';
 
 export type App = FastifyInstance;
 
@@ -37,6 +38,8 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
   await registerMiscRoutes(app);
   // 写入：/api/snapshot、/api/device/register（P5；P8 切换后由 Node 扛写）
   await registerUploadRoutes(app);
+  // 公开状态页 /status（P7，无登录）
+  await registerStatusRoutes(app);
 
   // ---- 健康检查（Python 版 /health 的等价实现） ----
   app.get('/health', async (_req, reply) => {
