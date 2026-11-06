@@ -1,0 +1,9 @@
+{
+  "nodes": [
+    {
+      "id": "charge-main",
+      "url": "https://charge.lizishuo.cn",
+      "p2p": "/ip4/8.148.70.133/tcp/4001"
+    }
+  ]
+}

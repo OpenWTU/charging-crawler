@@ -16,6 +16,7 @@ import com.test19124.charging.capture.CaptureFlow;
 import com.test19124.charging.capture.CaptureReceiver;
 import com.test19124.charging.geo.LocationBridge;
 import com.test19124.charging.net.BridgeNetClient;
+import com.test19124.charging.net.NodeDiscovery;
 import com.test19124.charging.net.RefreshService;
 import com.test19124.charging.net.Updater;
 import com.test19124.charging.state.OverviewCache;
@@ -86,6 +87,8 @@ public class MainActivity extends Activity
         super.onCreate(savedInstanceState);
         tokens = new TokenStore(this);
         store = new Store(this);
+        // 节点发现：启动时后台拉取 GitHub 目录 + mDNS，动态切服务器地址
+        NodeDiscovery.init(this);
 
         shell = new AppWebShell(this);
         overview = new OverviewCache(this);
