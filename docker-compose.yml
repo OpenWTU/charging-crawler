@@ -23,6 +23,7 @@ services:
       - "4001:4001"             # libp2p（P2P_ENABLED=true 时用）
     environment:
       NODE_ENV: production
+      TZ: Asia/Shanghai
       HOST: 0.0.0.0
       PORT: "8791"
       DATABASE_PATH: /data/charge.db
@@ -39,6 +40,8 @@ services:
       P2P_WHITELIST_CACHE: /data/p2p_peers.json
       P2P_MDNS: "false"
     volumes:
+      # 时区：让容器内 nowStr() 等用北京时间（宿主已配 Asia/Shanghai）
+      - /etc/localtime:/etc/localtime:ro
       # 数据目录：SQLite 库 + token_key + version.json + download + p2p_key
       - ${DATA_DIR:-./data}:/data
     mem_limit: 512m

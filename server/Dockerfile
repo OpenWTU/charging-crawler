@@ -19,10 +19,11 @@ RUN pnpm run build
 # ---------- 运行阶段 ----------
 FROM node:24-alpine
 
-RUN apk add --no-cache tini curl
+RUN apk add --no-cache tini curl tzdata
 
 WORKDIR /app
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    TZ=Asia/Shanghai
 
 # 生产依赖（libp2p 等全是纯 JS，无需编译工具）
 COPY server/package.json server/pnpm-lock.yaml ./
