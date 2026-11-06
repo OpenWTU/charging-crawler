@@ -1,0 +1,28 @@
+﻿# build outputs
+android/build/
+android/app/build/
+*.apk
+*.idsig
+*.keystore
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+# data / secrets
+cloud/data/*.db
+cloud/data/*.db-*
+cloud/data/download/
+cloud/data/upload_secret.txt
+cloud/data/version.json
+# node
+webui/node_modules/
+webui/dist/
+# misc
+*.log
+%TEMP%
+
+data/
+shots/app-token*
+
+# 本机部署配置（含服务器地址与密钥路径）
+deploy.local.ps1

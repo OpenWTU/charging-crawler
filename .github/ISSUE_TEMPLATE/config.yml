@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用与部署问题
+    url: https://github.com/OpenWTU/charging-crawler/blob/main/README.md
+    about: 先看 README 的「构建」「部署」「运维」章节
+  - name: 安全漏洞
+    url: https://github.com/OpenWTU/charging-crawler/security/advisories/new
+    about: 请不要公开提交安全问题，走私密报告

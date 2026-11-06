@@ -1,0 +1,17 @@
+校园充电桩空位查询（charging-crawler）
+Copyright (c) 2026 test19124
+
+Required Notice: Copyright (c) 2026 test19124
+
+本软件以 PolyForm Noncommercial License 1.0.0 授权发布
+（SPDX: PolyForm-Noncommercial-1.0.0，全文见 LICENSE）。
+
+该许可证**不是** OSI 认可的开源许可证：仅允许非商业用途，
+商业使用需另行取得授权。
+
+第三方组件（运行时依赖）：
+- cryptography（Apache-2.0）——服务端令牌加解密
+- Vue 3（MIT）、Vant 4（MIT）、ECharts 5（Apache-2.0）——前端
+- 构建期：Vite（MIT）、Android SDK 构建工具
+
+本项目与任何充电桩运营商无隶属关系；"快充""好快充"等名称归其权利人所有。

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>充电桩 · 管理</title>
+<style>
+  body { margin:0; background:#f3f5f9; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; color:#0f172a; }
+  .wrap { max-width:960px; margin:0 auto; padding:20px 16px; }
+  h1 { font-size:19px; margin:0 0 12px; }
+  .muted { color:#475569; font-size:12.5px; }
+  table { width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:12.5px; }
+  th, td { padding:8px 10px; text-align:left; border-bottom:1px solid #e2e8f0; }
+  th { background:#f8fafc; }
+  tr.row { cursor:pointer; }
+  tr.row:hover { background:#f8fafc; }
+  tr.detail td { background:#f8fafc; color:#475569; font-size:12px; line-height:1.7; word-break:break-all; }
+  .ok { color:#047857; } .bad { color:#dc2626; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>充电桩数据 · 上传审计</h1>
+  <div class="muted" id="sub">加载中…</div>
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr><th>#</th><th>时间</th><th>IP</th><th>大小</th><th>结果</th><th>说明</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  </div>
+</div>
+<script>
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+(async () => {
+  try {
+    const r = await fetch('/admin/api/audit?limit=200', { cache: 'no-store' });
+    const d = await r.json();
+    $('sub').textContent = '显示 ' + d.rows.length + ' 条 / 共 ' + (d.total ?? d.rows.length) + ' 条';
+    $('rows').innerHTML = d.rows.map(x =>
+      '<tr class="row" data-id="' + x.id + '"><td>' + x.id + '</td><td>' + esc(x.ts) + '</td><td>' + esc(x.ip) +
+      '</td><td>' + x.size + '</td><td class="' + (x.result === 'ok' ? 'ok' : 'bad') + '">' + esc(x.result) +
+      '</td><td>' + esc(x.detail || '') + '</td></tr>' +
+      '<tr class="detail" id="d' + x.id + '" style="display:none"><td colspan="6">' +
+      'UA：' + esc(x.ua || '-') + '<br>说明：' + esc(x.detail || '-') +
+      '<br>结果：' + esc(x.result) + ' · 大小：' + x.size + ' B · IP：' + esc(x.ip) + '</td></tr>'
+    ).join('') || '<tr><td colspan="6" class="muted">暂无记录</td></tr>';
+    $('rows').addEventListener('click', (e) => {
+      const tr = e.target.closest('tr.row');
+      if (!tr) return;
+      const d = $('d' + tr.dataset.id);
+      if (d) d.style.display = d.style.display === 'none' ? '' : 'none';
+    });
+  } catch (e) {
+    $('sub').textContent = '加载失败：' + e.message;
+  }
+  function $(id) { return document.getElementById(id); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+20 3 * * * root /usr/local/bin/charge-backup-bundle.sh

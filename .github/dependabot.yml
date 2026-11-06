@@ -1,0 +1,41 @@
+version: 2
+
+updates:
+  # Python 依赖
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps"
+
+  # 前端依赖
+  - package-ecosystem: npm
+    directory: "/webui"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps"
+    groups:
+      vue-stack:
+        patterns:
+          - "vue"
+          - "vant"
+          - "echarts"
+          - "vite"
+          - "@vitejs/*"
+      lint:
+        patterns:
+          - "eslint*"
+          - "@eslint/*"
+          - "globals"
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"

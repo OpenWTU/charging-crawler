@@ -1,0 +1,50 @@
+name: Bug 反馈
+description: 报告一个可复现的问题
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先搜索已有 issue，并**不要贴出**令牌、密钥、服务器地址等敏感信息。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象
+      description: 发生了什么？和预期差在哪？
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开 …
+        2. 点击 …
+        3. 看到 …
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 出现位置
+      multiple: true
+      options:
+        - Android App
+        - 网页（移动端）
+        - 网页（桌面端）
+        - 管理后台
+        - 服务端 / 抓取
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: App 版本（设置页可见）或 commit hash
+      placeholder: 1.11.39 / v1.0.0 / 9f3c1a2
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 服务端可贴 `journalctl -u charge-cloud` 片段；App 可贴诊断页的调试日志。**请先抹掉令牌与域名。**
+      render: shell
