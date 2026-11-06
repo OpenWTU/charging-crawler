@@ -244,33 +244,33 @@ curl -s https://charge.lizishuo.cn/api/version
 #   -> versionCode 215 / versionName 1.11.39
 ```
 
-### 下一步：补齐剩余接口后才能真正全量
+### 节点标识与手动切换（v2.2+）
 
-要完全替换 Python，Node 还需要实现：
-1. `POST /api/snapshot`（App 上传快照，含设备 HMAC 验签 + 时间戳校验 + nonce 防重放）
-2. `POST /api/device/register`（设备注册）
-3. `POST /api/refresh`（管理员触发抓取）
-4. `GET /api/version`（读 version.json）
-5. `GET /api/latest`、`GET /api/area-coords`、`GET /api/controllers`、`GET /api/free-rate`
-6. 静态资源托管（web/dist + APK 下载）
-7. 管理端全部接口
+- `NODE_NAME`：节点名称（状态页卡片显示，默认 peerId 前 8 位）
+- `NODE_URL`：节点 HTTP 地址（状态页卡片「切换」时 App 直连这个 URL）
+
+docker-compose.yml 里可配：
+```yaml
+environment:
+  NODE_NAME: 主节点
+  NODE_URL: https://charge.lizishuo.cn
+```
 
 ### 运维观察点
 
-- `journalctl -u charge-node -f` 看 Node 日志
-- `systemctl show charge-node -p MemoryCurrent` 看内存（实测 28-35 MB）
-- 对拍脚本 `parity_server.py` 随时可重跑
+- `docker logs charge-node -f` 看 Node 日志
+- `docker stats charge-node` 看内存（实测约 50-110 MB）
+- 健康检查：`curl http://127.0.0.1:8791/health`
+- 更新日志：`/var/log/charge-update.log`
 
 ---
 
-## 已验证的数据链路现状（2026-11-06 13:00）
+## 当前生产状态
 
-```json
-"worker": { "last_run": "12:57:52", "last_result": "areas=no-token|ports=no-token" },
-"token_pool": { "count": 11, "valid": 0 }
 ```
-
-**服务端抓取因为 token 池全部过期而抓不到数据**（数据停在最后一次 App 上传）。
-这不是 Node 分流引起的（分流只动读路径），而是「服务端依赖 token 抓取」这个模式本身的脆弱点——
-也正是要改成「App 本地抓取 + 上传」的原因。
+生产：charge-node 容器（GHCR latest），Docker 部署
+镜像：CI 推 v* tag 自动构建，凌晨 3 点自动更新（失败回退）
+数据：SQLite 在 /var/lib/charge-cloud（数据卷挂载 /data）
+P2P：默认启用，白名单鉴权（签名来源 peerId）
+```
 

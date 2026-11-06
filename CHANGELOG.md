@@ -3,8 +3,25 @@
 本文件格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-> 说明：仓库内代码另有一套历史内部版本号（当前 `1.11.39`），
+> 说明：仓库内代码另有一套历史内部版本号（当前 `2.2.3`），
 > 对外发布使用独立语义化版本与 Git tag。
+
+## [v2.2.x] - 2026-11-06
+
+Node/TypeScript 全量重写稳定版。
+
+### 后端
+- Fastify 5 + Kysely + node:sqlite（Node 24），Python 版下线删除
+- 设备 HMAC 验签上传（±10 分钟时间窗 + nonce 防重放）+ 自动审批 + 自动拉黑
+- worker 定时抓取（token 池轮换，平台 MD5 签名对拍）
+- /status 公开状态页（服务器/数据/令牌池/worker/节点/拉黑）
+- P2P：libp2p + gossipsub 快照广播 + peerId 白名单（签名来源鉴权）+ 状态心跳
+- Docker 部署（GHCR）+ 凌晨自动更新（失败回退）+ 时区修复
+
+### App（2.2.3）
+- 节点发现（GitHub 目录 + mDNS + 手动切换）+ 检查更新直读 GitHub
+- 历史页收进实时页卡片 + 状态页节点卡片
+- 公众号「蛮来电」抓取引导文案
 
 ## [未发布]
 

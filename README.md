@@ -130,9 +130,10 @@ App 上传 → 节点 A 落库 → gossipsub 广播（topic "charge-snapshots"�
         → 节点 B/C 收到 → body_sha256 去重 → 落库
 ```
 
-- 默认 `P2P_ENABLED=false`（单节点不受影响）。
-- 加节点：部署新节点 → 把它的 HTTP 地址写进 `server/p2p/nodes.json`（App 目录）、peerId 写进 `server/p2p/peers.json`（白名单）→ PR 合入 main。
-- App 端节点发现：启动时从 GitHub raw 拉 `nodes.json`，逐个 `/health` 探测选第一个通的；mDNS 发现局域网节点；全失败回退内置 `charge.lizishuo.cn`。
+- 默认 `P2P_ENABLED=true`（单节点也启动，白名单空时拒绝所有外部消息，安全）。
+- 加节点：部署新节点 → 把它的 HTTP 地址写进 `server/p2p/nodes.json`（App 目录）、peerId 写进 `server/p2p/peers.json`（白名单）→ PR 合入 main → 发版（镜像带新白名单）。
+- App 端节点发现：启动时从 GitHub contents API 拉 `nodes.json`，逐个 `/health` 探测选第一个通的；mDNS 发现局域网节点；全失败回退内置 `charge.lizishuo.cn`。
+- 状态页节点卡片：显示节点名称（NODE_NAME）/版本/数据统计，可点击手动切换连接节点。
 
 ## 构建与发布
 
@@ -141,7 +142,7 @@ App 上传 → 节点 A 落库 → gossipsub 广播（topic "charge-snapshots"�
 cd webui && pnpm install && pnpm run build   # 输出到 webui/dist
 
 # APK（本机，需 Android SDK/JDK + release keystore）
-CHARGE_VERSION_CODE=2000000 CHARGE_VERSION_NAME=2.0.0 python android/build.py
+CHARGE_VERSION_CODE=2000000 CHARGE_VERSION_NAME=2.2.3 python android/build.py
 
 # Docker 镜像（本地验证）
 docker compose build
@@ -163,7 +164,7 @@ docker compose build
 
 ## 版本与测试
 
-- App：`2.0.0`（versionCode 2000000）
+- App：`2.2.3`（versionCode 2002003）
 - Node 后端测试：`cd server && pnpm test`（53 项，含密码学对拍、端点边界、P2P 两节点互传、worker mock）
 - 只读接口曾与 Python 版 24/24 对拍一致（Python 版已删除，见 git 历史）
 - 签名：release keystore 保持仓库外，SHA256 见 `/api/version`

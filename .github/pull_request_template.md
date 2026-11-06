@@ -8,7 +8,7 @@
 
 ## 怎么验证
 
-- [ ] `python -m unittest discover -s tests` 通过
+- [ ] `cd server && pnpm test` 通过
 - [ ] `cd webui && pnpm run lint` 通过
 - [ ] `cd webui && pnpm run build` 通过
 - [ ] 手动验证了受影响的页面/接口
