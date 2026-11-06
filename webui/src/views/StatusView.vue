@@ -167,7 +167,7 @@ onUnmounted(() => clearInterval(timer));
 
 <style scoped>
 .status-wrap { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
-.status-card { background: var(--card-bg, #fff); border-radius: 10px; padding: 12px; }
+.status-card { background: var(--card); border-radius: 10px; padding: 12px; }
 .status-card h3 { margin: 0 0 8px; font-size: 14px; }
 .kv { margin: 0; display: grid; gap: 6px; }
 .kv > div { display: flex; justify-content: space-between; font-size: 13px; }
