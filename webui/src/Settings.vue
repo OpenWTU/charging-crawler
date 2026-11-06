@@ -79,7 +79,7 @@
       <van-cell-group inset class="group-card">
         <van-cell
           title="当前版本"
-          :value="version ? 'v' + version : '未知'"
+          :value="version ? (String(version).startsWith('v') ? version : 'v' + version) : '未知'"
           :label="version ? '来自安装包信息' : '暂未获取到版本信息'"
         />
         <van-cell
