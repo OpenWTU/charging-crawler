@@ -105,7 +105,7 @@ Python 版有 **17 个 API 路径**，Node 版目前只实现 **7 个只读查�
 在 `/etc/nginx/sites-available/charge.lizishuo.cn` 的 `location /` **之前**插入：
 
 ```nginx
-location ~ ^/api/(overview|now|areas-ports|area-ports|analytics|history)$ {
+location ~ ^/api/(overview|now|areas-ports|area-ports|analytics|history|version|latest)$ {
     proxy_pass http://127.0.0.1:8791;
     # ... 标准 proxy_set_header
 }
@@ -116,10 +116,20 @@ location ^~ /api/pile/ {
 }
 ```
 
+当前已切到 Node 的端点（**9 个**）：overview / now / areas-ports / area-ports /
+analytics / history / pile/ / version / latest。
+
+**仍走 Python 的**：/api/snapshot（上传）、/api/device/register、/api/refresh、
+/api/area-coords、/api/controllers、/api/free-rate、/admin/*、/（前端静态资源与 APK 下载）。
+
+⚠️ `/` 与 `/assets/` 暂不切：虽然 Node 已实现静态资源托管（流式发送），但前端页面是
+最后一道防线，Node 挂了不至于整站打不开；等 Node 稳定跑一段时间再切。
+
 Nginx 的 location 优先级：`^~` 前缀 > `~` 正则 > 普通前缀 `/`，
 所以这两个块会先于 `location /` 命中，其余路径自然落回 Python。
 
-备份在 `/root/nginx-charge-before-node-<时间戳>.conf`。
+备份在 `/root/nginx-charge-before-node-<时间戳>.conf` 和
+`/root/nginx-charge-before-vlatest-<时间戳>.conf`。
 
 ### 上线后验证（实测全部通过）
 
