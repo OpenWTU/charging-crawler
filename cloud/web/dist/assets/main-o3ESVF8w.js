@@ -1,1 +1,0 @@
-import"./api-B99EpE7I.js";import{i as e,t}from"./vant-4LSaFOJz.js";import{t as n}from"./App-CWKCLnyK.js";var r=e(n);r.config.errorHandler=(e,t,n)=>{console.error(`[vue-error]`,n,e)},window.addEventListener(`error`,e=>console.error(`[window-error]`,e.message)),window.addEventListener(`unhandledrejection`,e=>console.error(`[unhandled]`,e.reason)),r.use(t).mount(`#app`);

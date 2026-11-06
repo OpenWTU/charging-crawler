@@ -23,13 +23,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - language: python
-            build-mode: none
-            # Python 版已下线，cloud/crawler/tests 是遗留代码，不分析
-            paths-ignore: 'cloud/**,crawler/**,tests/**'
           - language: javascript-typescript
             build-mode: none
-            paths-ignore: ''
     steps:
       - uses: actions/checkout@v7
 
@@ -39,7 +34,6 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-and-quality
-          paths-ignore: ${{ matrix.paths-ignore }}
 
       - name: 分析
         uses: github/codeql-action/analyze@v3

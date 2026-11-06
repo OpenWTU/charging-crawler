@@ -1,1 +1,0 @@
-17 3 * * * root /usr/local/bin/charge-db-backup.sh

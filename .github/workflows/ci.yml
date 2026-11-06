@@ -15,34 +15,6 @@ permissions:
   contents: read
 
 jobs:
-  python:
-    name: python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.10', '3.11', '3.12']
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      - name: 安装依赖
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt ruff
-
-      - name: 代码风格与静态检查（ruff）
-        run: ruff check cloud crawler tests tools run.py
-
-      - name: 单元测试
-        run: python -m unittest discover -s tests -v
-
-  # Node/TypeScript 重写版（server/）。与 Python 版并行跑，双跑期两个都必须绿。
   node:
     name: node & vitest
     runs-on: ubuntu-latest

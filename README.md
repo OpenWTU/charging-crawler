@@ -40,7 +40,7 @@ server/                  Node/TypeScript 后端（核心，生产运行）
     domain/              crypto / ports / analytics / prediction / store / tokens
                          worker / p2p / sign / crawler / ratelimit / banlist
     db/                  Kysely 实例 + 自研迁移器 + node:sqlite 适配
-  migrations/sqlite/     001_init + 002_seed（与 Python 版 schema 逐字一致）
+  migrations/sqlite/     001_init + 002_seed（与历史 Python 版 schema 逐字一致，对拍固化）
   scripts/               跨语言对拍（parity / crypto / sign）
   test/                  53 项（vitest）
   Dockerfile / deploy/   镜像构建 + 部署 + 更新脚本 + 对拍
@@ -48,8 +48,6 @@ server/                  Node/TypeScript 后端（核心，生产运行）
 
 webui/                   Vue 3 + Vant 4 + ECharts，Vite 多入口（index/admin/app）
 android/                 WebView + JS 桥 App，build.py 离线构建（aapt2/javac/d8/apksigner）
-cloud/                   历史 Python 版（已下线，保留作参考与回滚）
-tests/                   历史 unittest 用例
 docker-compose.yml       一键部署
 .github/workflows/       ci（检查）+ release-image（镜像）+ release-apk（APK）
 ```
@@ -167,7 +165,7 @@ docker compose build
 
 - App：`2.0.0`（versionCode 2000000）
 - Node 后端测试：`cd server && pnpm test`（53 项，含密码学对拍、端点边界、P2P 两节点互传、worker mock）
-- 跨语言对拍：只读接口 24/24 与 Python 版一致（历史验证）
+- 只读接口曾与 Python 版 24/24 对拍一致（Python 版已删除，见 git 历史）
 - 签名：release keystore 保持仓库外，SHA256 见 `/api/version`
 
 ## 数据来源与使用边界
