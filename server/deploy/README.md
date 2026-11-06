@@ -1,5 +1,34 @@
 # server/deploy —— Node 版部署
 
+## 当前生产状态（2026-11-06 P8 完成后）
+
+**Python 已下线**：charge-cloud 已 stop+disable。Node（charge-node）扛全部：
+
+```
+读：12 个 API + /api/pile + /status
+写：/api/snapshot（HMAC 验签 + 自动拉黑）、/api/device/register（自动审批）
+抓：worker 定时抓取（首轮 areas=ok:39|ports=ok:39/438）
+静态：/（WEB_DIST=/opt/charge-cloud/cloud/web，注意无 dist 子目录）
+```
+
+Nginx 全部 proxy 到 8791。内存约 35 MB。
+
+**回滚**：
+```bash
+systemctl enable --now charge-cloud
+cp /root/nginx-charge-before-full-node-*.conf /etc/nginx/sites-available/charge.lizishuo.cn
+nginx -t && systemctl reload nginx
+```
+
+### 两个关键踩坑（P8）
+
+1. **WEB_DIST 路径**：生产的 web 目录是 `/opt/charge-cloud/cloud/web`（index.html 直接
+   在这一层），**没有 dist 子目录**。误设成 `.../cloud/web/dist` 会导致前端 404。
+2. **Wants 依赖**：charge-node.service 原来有 `Wants=charge-cloud.service`，
+   重启 Node 会把已停的 Python 再拉起来。下线 Python 前必须先移除这个依赖。
+
+---
+
 ## 服务器现状（2026-11-06 实测）
 
 | 项 | 值 |

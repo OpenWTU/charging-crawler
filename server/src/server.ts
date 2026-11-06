@@ -6,10 +6,11 @@
 import Fastify from 'fastify';
 import type { FastifyError, FastifyInstance, FastifyServerOptions } from 'fastify';
 import cookie from '@fastify/cookie';
-import { HOST, PORT, NODE_ENV, P2P_ENABLED, DATABASE_READONLY } from './config.js';
+import { HOST, PORT, NODE_ENV, P2P_ENABLED, DATABASE_READONLY, AUTO_WORKER } from './config.js';
 import { logger } from './logger.js';
 import { closeDb, createDb, getDb, getRaw, ping } from './db/index.js';
 import { migrate } from './db/migrate.js';
+import { startWorker } from './domain/worker.js';
 import { registerPortsRoutes } from './routes/ports.js';
 import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerStateRoutes } from './routes/state.js';
@@ -98,9 +99,19 @@ async function main(): Promise<void> {
   await app.listen({ host: HOST, port: PORT });
   app.log.info({ host: HOST, port: PORT, env: NODE_ENV }, 'charge-server 已启动');
 
+  // 读写模式下启动抓取 worker（启动即跑第一轮）
+  let stopWorkerFn: (() => void) | null = null;
+  if (!DATABASE_READONLY && AUTO_WORKER) {
+    stopWorkerFn = startWorker();
+    app.log.info('[worker] 已启动（读写模式，AUTO_WORKER=on）');
+  } else if (DATABASE_READONLY) {
+    app.log.info('[worker] 只读模式，不启动');
+  }
+
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, '收到退出信号，正在关闭');
     try {
+      if (stopWorkerFn) stopWorkerFn();
       await app.close();
       await closeDb();
     } finally {

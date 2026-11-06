@@ -124,3 +124,8 @@ export const P2P_BOOTSTRAP = env('P2P_BOOTSTRAP', '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+
+/* ---------------- 服务端抓取 worker ---------------- */
+
+/** 读写模式下是否自动启动抓取 worker（P8 切换后默认开） */
+export const AUTO_WORKER = envBool('AUTO_WORKER', true);
