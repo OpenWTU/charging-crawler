@@ -1,0 +1,1 @@
+import"./api-CS95wFbT.js";import{i as e,t}from"./vant-vXRmtUrQ.js";import{t as n}from"./App-eBqDhHwp.js";e(n).use(t).mount(`#app`);

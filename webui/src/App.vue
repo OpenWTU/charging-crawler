@@ -116,14 +116,22 @@ import { hhmm } from './format.js';
 import { validGeo, toGcj, writeGeoCache } from './geo.js';
 
 // ---- 标签页：具名 tab，上传令牌开关只增减页签，不再让数字索引漂移 ----
-const TAB = Object.freeze({ LIVE: 'live', ANALYTICS: 'analytics', TOKEN: 'token', SETTINGS: 'settings' });
+const TAB = Object.freeze({
+  LIVE: 'live', ANALYTICS: 'analytics', TOKEN: 'token', SETTINGS: 'settings',
+});
 const uploadTokenOn = ref(true);
 const tab = ref(TAB.LIVE);
 const homeRef = ref(null);
 
+// 页签按「是否连得上服务器」动态增减：
+//   在线 → 实时 / 分析 / 令牌 / 设置（高级功能可用）
+//   离线 → 实时 / 令牌 / 设置（纯本地基础功能；令牌是本地能力，离线时更需要它）
+// 「分析」要读云端历史聚合，离线时打开只会空白，所以直接不出现。
+// 注：「历史」页签待 Android 侧补 getHistory 桥之后再加（当前 App 模式下
+//     getHistory 直接返回空数组，加了也是空白页）。
 const tabItems = computed(() => {
   const items = [{ name: TAB.LIVE, icon: 'home-o', label: '实时' }];
-  if (!isApp || uploadTokenOn.value) {
+  if (serverOnline.value) {
     items.push({ name: TAB.ANALYTICS, icon: 'bar-chart-o', label: '分析' });
   }
   if (isApp) {
@@ -134,12 +142,9 @@ const tabItems = computed(() => {
 });
 const tabNames = computed(() => tabItems.value.map((item) => item.name));
 
+// 上传令牌开关：只影响上传行为，不再控制页签显隐（页签由连通性决定）
 function onUploadTokenChange(v) {
-  const on = !!v;
-  if (uploadTokenOn.value === on) return;
-  uploadTokenOn.value = on;
-  // 分析页被隐藏时回到实时页，避免停在不可见的页签上
-  if (!tabNames.value.includes(tab.value)) tab.value = TAB.LIVE;
+  uploadTokenOn.value = !!v;
 }
 
 // ---- 主题 / 数据 / 刷新 / 更新 ----
@@ -148,7 +153,13 @@ const live = useLiveData(showToast);
 const {
   areas, updatedAt, health, tokenInvalid, tokenUnset, geo, locateNow,
   reload, loadNow, loadAllPorts, loadAreaCoords, initGeo, trackGeo, loadTokenState,
+  serverOnline,
 } = live;
+
+// 页签因连通性变化而增减时，若当前停留的页签被隐藏，回到实时页
+watch(tabNames, (names) => {
+  if (!names.includes(tab.value)) tab.value = TAB.LIVE;
+});
 
 const {
   refreshing, progress, progressPct, showProgress,
@@ -258,6 +269,15 @@ function onOverview() {
   reload();
 }
 
+// Android 抓取完成瞬间推送的本地快照（__onLocalState）：
+// 区域数据一到就渲染，不等「补全端口 8 秒 + 上传 2 秒」。
+// 这是「打开 App 立刻有数据」的关键路径，也是离线可用性的第一块基石。
+// 载荷与 getState() 同一份 JSON，areas 字段与 /api/overview 完全兼容。
+function onLocalState(raw) {
+  const state = typeof raw === 'string' ? safeParse(raw) : raw;
+  live.applyLocalState(state);
+}
+
 function safeParse(raw) {
   try { return JSON.parse(raw); } catch { return null; }
 }
@@ -274,7 +294,7 @@ function onBackPressed() {
 const bridge = useAppBridge({
   autoCheck, nativeLocation: onNativeLocation, appResume: onAppResume, backPressed: onBackPressed,
   refreshProgress: onRefreshProgress, refreshDone: onRefreshDone, uploadDone: onUploadDone,
-  overview: onOverview,
+  overview: onOverview, localState: onLocalState,
   updateChecking: onUpdateChecking, updateInfo: onUpdateInfo, updateError: onUpdateError,
 });
 
