@@ -32,6 +32,7 @@ import {
   P2P_LISTEN_PORT,
   P2P_MDNS,
   P2P_WHITELIST_CACHE,
+  P2P_WHITELIST_DEFAULT,
   P2P_WHITELIST_URL,
   SERVER_VERSION,
 } from '../config.js';
@@ -132,7 +133,14 @@ export async function loadWhitelist(
     logger.info({ count: peers.size }, '[p2p] 白名单从缓存加载');
     return peers;
   } catch {
-    logger.warn('[p2p] 无白名单缓存，拒绝所有外部消息');
+    /* 缓存也没有，继续尝试镜像内默认值 */
+  }
+  try {
+    const peers = parse(fs.readFileSync(P2P_WHITELIST_DEFAULT, 'utf8'));
+    logger.info({ count: peers.size }, '[p2p] 白名单从镜像默认值加载');
+    return peers;
+  } catch {
+    logger.warn('[p2p] 无白名单（远程/缓存/镜像默认都不可用），拒绝所有外部消息');
     return new Set();
   }
 }

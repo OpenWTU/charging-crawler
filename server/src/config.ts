@@ -136,6 +136,11 @@ export const P2P_WHITELIST_CACHE = env(
   'P2P_WHITELIST_CACHE',
   '/var/lib/charge-cloud/p2p_peers.json',
 );
+/** 镜像内默认白名单（随版本发布，远程/缓存都拿不到时用它） */
+export const P2P_WHITELIST_DEFAULT = env(
+  'P2P_WHITELIST_DEFAULT',
+  '/app/default-peers.json',
+);
 export const P2P_MDNS = envBool('P2P_MDNS', false);
 
 /* ---------------- 服务端抓取 worker ---------------- */
