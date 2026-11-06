@@ -33,6 +33,8 @@ export function readHealth(d) {
       : (poolValid !== null ? poolValid > 0 : null),
     token_valid: healthNum(d.token_valid != null ? d.token_valid : (pool ? pool.valid : null)),
     earliest_exp: healthNum(d.earliest_exp != null ? d.earliest_exp : (pool ? pool.earliest_exp : null)),
+    // 令牌时间的数据来源：有 token_pool 说明来自服务器；否则是本地令牌时间（App 桥降级/旧后端）
+    token_source: pool ? 'server' : 'local',
     interval: healthNum(d.interval),
     error_count: healthNum(d.error_count),
     pool,
@@ -104,12 +106,12 @@ export function useHealth(health, nowTick) {
   function warnTokenExpiring(mins) {
     if (tokenWarnShown) return;
     tokenWarnShown = true;
-    // 同一次会话只提醒一次：sessionStorage 在页面刷新后仍在，避免每次 reload 刷屏
     try {
       if (sessionStorage.getItem(TOKEN_WARN_KEY) === '1') return;
       sessionStorage.setItem(TOKEN_WARN_KEY, '1');
     } catch { /* 无 sessionStorage 时只靠本页实例的判重 */ }
-    showToast('令牌约 ' + mins + ' 分钟后过期，请到 App 重新抓取');
+    const src = health.value && health.value.token_source === 'local' ? '本地令牌' : '服务器令牌';
+    showToast(src + '约 ' + mins + ' 分钟后过期，请到 App 重新抓取');
   }
   watch(tokenWarnMinutes, (m) => { if (m > 0) warnTokenExpiring(m); });
 
@@ -127,6 +129,8 @@ export function useHealth(health, nowTick) {
     const h = health.value;
     if (!h) return '';
     const parts = [];
+    const src = h.token_source === 'local' ? '本地令牌' : '服务器令牌池';
+    parts.push(src);
     if (h.token_valid !== null) parts.push('有效令牌 ' + h.token_valid + ' 个');
     if (h.earliest_exp !== null) parts.push('最早过期 ' + tsText(h.earliest_exp));
     const p = h.pool;

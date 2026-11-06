@@ -36,8 +36,8 @@ v-if="isApp" class="refresh" type="button"
 v-if="healthTokenKnown" class="hb hb-token" :class="tokenHealthClass"
                 :title="healthTokenTitle">
             <van-icon name="shield-o" />
-            <template v-if="tokenWarnMinutes > 0">服务器令牌约 {{ tokenWarnMinutes }} 分钟后过期</template>
-            <template v-else>服务器令牌{{ health.token_ready === false ? '不可用' : '正常' }}<template v-if="tokenCoverText"><span class="hb-exp"> · {{ tokenCoverText }}</span></template></template>
+            <template v-if="tokenWarnMinutes > 0">{{ health.token_source === 'local' ? '本地令牌' : '服务器令牌' }}约 {{ tokenWarnMinutes }} 分钟后过期</template>
+            <template v-else>{{ health.token_source === 'local' ? '本地令牌' : '服务器令牌' }}{{ health.token_ready === false ? '不可用' : '正常' }}<template v-if="tokenCoverText"><span class="hb-exp"> · {{ tokenCoverText }}</span></template></template>
           </span>
         </div>
       </header>
