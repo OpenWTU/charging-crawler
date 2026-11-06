@@ -266,10 +266,16 @@ function onUploadDone(raw) {
   loadNow();
 }
 
-// Android OverviewCache 拉取 /api/overview 成功后主动推送（__onOverview）：
-// 这是云端 token_pool/健康字段变化时唯一的主动通知，接住它立即刷新健康条。
-// 不需要解析 raw——reload() 会重新读 getState 桥，拿到的就是最新缓存。
-function onOverview() {
+// Android OverviewCache 推送（__onOverview）：
+//  - 成功：带完整 overview JSON → reload() 刷新健康条与列表
+//  - 失败：带 {"server_online":false} 离线标记 → 直接置离线，
+//    让「分析」「历史」页签隐藏（否则前端一直停在初始的在线态）
+function onOverview(raw) {
+  const d = typeof raw === 'string' ? safeParse(raw) : raw;
+  if (d && typeof d === 'object' && !Array.isArray(d) && d.server_online === false) {
+    live.updateServerOnline(false);
+    return;
+  }
   reload();
 }
 

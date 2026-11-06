@@ -69,6 +69,10 @@ public final class OverviewCache {
             } catch (Exception e) {
                 everFetched = true; // 明确失败：此后 isOnline() 按 lastOkAt 老化判定
                 DebugLog.add("overview 获取失败: " + e.getMessage());
+                // 失败也要通知前端：否则前端 serverOnline 停在初始 true，
+                // 飞行模式下「分析」「历史」tab 不会隐藏（离线降级失效）。
+                host.postJs("window.__onOverview && window.__onOverview("
+                        + JSONObject.quote("{\"server_online\":false}") + ")");
             } finally {
                 loading = false;
             }

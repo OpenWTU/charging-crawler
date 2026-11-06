@@ -243,6 +243,6 @@ export function useLiveData(notify) {
     tokenInvalid, tokenUnset, loadTokenState, clearTokenFlags,
     geo, locating, locateNow, initGeo, trackGeo,
     reload, loadNow, loadAllPorts, loadAreaCoords, setOnLoaded,
-    applyLocalState, serverOnline,
+    applyLocalState, serverOnline, updateServerOnline,
   };
 }
