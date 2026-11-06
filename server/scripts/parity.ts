@@ -137,11 +137,14 @@ async function main(): Promise<void> {
     });
   }
 
+  // 概览（含令牌池/健康字段）
+  cases.push({ label: 'overview', path: '/api/overview' });
+
   // 2) 逐个端点对拍
   for (const c of cases) {
     const [py, nd] = await Promise.all([getJSON(PY_BASE, c.path), getJSON(NODE_BASE, c.path)]);
     const statusOk = py.status === nd.status;
-    // stale/online 依赖当前时间：抽出来单独看
+    // stale/online/generated_at 依赖当前时间：抽出来不参与比较
     const strip = (v: unknown): unknown => {
       const clone = JSON.parse(JSON.stringify(v));
       const walk = (o: unknown): void => {
@@ -150,6 +153,7 @@ async function main(): Promise<void> {
           const obj = o as Record<string, unknown>;
           delete obj.stale;
           delete obj.online;
+          delete obj.generated_at; // 当前时间戳，两端必然差几秒
           Object.values(obj).forEach(walk);
         }
       };

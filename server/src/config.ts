@@ -80,6 +80,11 @@ export const PILE_HISTORY_LIMIT = 120;
 export const TOKEN_TRY_LIMIT = 3;
 export const TOKEN_LONG_LIVED_SECONDS = 1800;
 
+/** worker 定时抓取周期（秒）；健康判定的「过期」阈值 = 它 + 300 秒余量 */
+export const WORKER_INTERVAL = 600;
+export const HEALTH_STALE_SECONDS = WORKER_INTERVAL + 300;
+export const HEALTH_CACHE_TTL = 30;
+
 export const ANALYTICS_SLOT_MINUTES = 15;
 export const ANALYTICS_TREND_SLOTS = 96;
 export const ANALYTICS_TREND_DAYS = 7;
