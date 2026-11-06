@@ -42,7 +42,7 @@
       <section class="status-card">
         <h3>登录令牌池</h3>
         <dl class="kv">
-          <div><dt>有效 / 总数</dt><dd>{{ data.token_pool?.valid ?? 0 }} / {{ data.token_pool?.count ?? 0 }}</dd></div>
+          <div><dt>有效 / 总数</dt><dd>{{ data.token_pool?.valid ?? 0 }} / {{ data.token_pool?.count ?? 0 }}<span v-if="(data.token_pool?.valid ?? 0) === 0 && (data.token_pool?.count ?? 0) > 0" class="expired-tag">全部已过期</span></dd></div>
           <div><dt>最早过期</dt><dd>{{ fmtEpoch(data.token_pool?.earliest_exp) }}</dd></div>
           <div><dt>覆盖到</dt><dd>{{ fmtEpoch(data.token_pool?.cover_until) }}</dd></div>
           <div><dt>长效令牌</dt><dd>{{ data.token_pool?.long_lived ?? 0 }} 个</dd></div>
@@ -212,6 +212,7 @@ onUnmounted(() => clearInterval(timer));
 .kv dt { color: var(--muted, #888); }
 .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
 .mono { font-family: ui-monospace, monospace; }
+.expired-tag { margin-left: 6px; font-size: 11px; color: var(--warn-fg, #b26a00); background: var(--warn-bg, #fff4e5); padding: 1px 6px; border-radius: 8px; }
 .muted { color: var(--muted, #888); font-size: 12px; margin: 6px 0 0; }
 .peer-list { margin-top: 8px; display: grid; gap: 8px; }
 .peer-card { background: var(--surface-2, #f7f8fa); border-radius: 8px; padding: 10px; display: grid; gap: 6px; }

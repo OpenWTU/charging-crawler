@@ -129,8 +129,8 @@ const emit = defineEmits(['check-update', 'theme-change', 'upload-token-change']
 
 // 上传开关只有一组事实描述：开关说明 label 与成功 Toast 都由它拼出来，
 // 避免「开关说明 / 副标题 / Toast」对同一状态给出不同说法。
-const UPLOAD_ON_DESC = '上传登录令牌，分析页显示';
-const UPLOAD_OFF_DESC = '不上传登录令牌，分析页隐藏';
+const UPLOAD_ON_DESC = '上传登录令牌到服务器（服务器定时抓取用）';
+const UPLOAD_OFF_DESC = '不上传令牌，仅本机抓取使用';
 const UPLOAD_ON_LABEL = '开启后' + UPLOAD_ON_DESC;
 const UPLOAD_OFF_LABEL = '关闭后' + UPLOAD_OFF_DESC;
 const UPLOAD_ON_TOAST = '已开启：' + UPLOAD_ON_DESC;

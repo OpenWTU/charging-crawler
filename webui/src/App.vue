@@ -36,8 +36,8 @@ v-if="isApp" class="refresh" type="button"
 v-if="healthTokenKnown" class="hb hb-token" :class="tokenHealthClass"
                 :title="healthTokenTitle">
             <van-icon name="shield-o" />
-            <template v-if="tokenWarnMinutes > 0">令牌约 {{ tokenWarnMinutes }} 分钟后过期</template>
-            <template v-else>令牌{{ health.token_ready === false ? '不可用' : '正常' }}<template v-if="tokenCoverText"><span class="hb-exp"> · {{ tokenCoverText }}</span></template></template>
+            <template v-if="tokenWarnMinutes > 0">服务器令牌约 {{ tokenWarnMinutes }} 分钟后过期</template>
+            <template v-else>服务器令牌{{ health.token_ready === false ? '不可用' : '正常' }}<template v-if="tokenCoverText"><span class="hb-exp"> · {{ tokenCoverText }}</span></template></template>
           </span>
         </div>
       </header>
@@ -45,8 +45,8 @@ v-if="healthTokenKnown" class="hb hb-token" :class="tokenHealthClass"
       <div v-if="tokenInvalid || tokenUnset" class="token-alert">
         <van-icon name="warning-o" />
         <div class="token-alert-text">
-          <b>{{ tokenUnset ? '尚未设置令牌' : '登录令牌已失效' }}</b>
-          <span>{{ tokenUnset ? '去「令牌」页获取后才能刷新实时数据' : '数据可能无法更新，请重新获取令牌' }}</span>
+          <b>{{ tokenUnset ? '本地尚未设置令牌' : '本地登录令牌已失效' }}</b>
+          <span>{{ tokenUnset ? '去「令牌」页获取后才能刷新实时数据（仅影响本机）' : '数据可能无法更新，请重新获取令牌（仅影响本机）' }}</span>
         </div>
         <button type="button" @click="goToken">去获取</button>
       </div>
