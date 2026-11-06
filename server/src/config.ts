@@ -118,7 +118,7 @@ export const PORT_REFRESH_COOLDOWN = 60;
 
 /* ---------------- P2P（默认关闭，节省内存） ---------------- */
 
-export const P2P_ENABLED = envBool('P2P_ENABLED', false);
+export const P2P_ENABLED = envBool('P2P_ENABLED', true);
 export const P2P_LISTEN_PORT = envInt('P2P_LISTEN_PORT', 4001);
 export const P2P_BOOTSTRAP = env('P2P_BOOTSTRAP', '')
   .split(',')

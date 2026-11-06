@@ -33,7 +33,7 @@ services:
       VERSION_FILE: /data/version.json
       APK_DIR: /data/download
       WEB_DIST: /web
-      P2P_ENABLED: ${P2P_ENABLED:-false}
+      P2P_ENABLED: ${P2P_ENABLED:-true}
       P2P_LISTEN_PORT: "4001"
       P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
       P2P_KEY_FILE: /data/p2p_key

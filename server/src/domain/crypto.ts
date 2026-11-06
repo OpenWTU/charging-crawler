@@ -93,5 +93,5 @@ export function deviceSignature(secret: string, ts: string, nonce: string, body:
 
 /** 常量（与 cloud/config.py 一致） */
 export const MAX_BODY = 1000 * 1024;
-export const MAX_SKEW = 300;
+export const MAX_SKEW = 600;
 export const NONCE_RE = /^[A-Fa-f0-9]{16,64}$/;
