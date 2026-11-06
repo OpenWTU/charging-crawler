@@ -83,6 +83,8 @@ export async function loadOrCreateKey(keyFile: string): Promise<Uint8Array> {
     return new Uint8Array(Buffer.from(hex, 'hex'));
   }
   const key = await generateKeyPair('Ed25519');
+  // lgtm[js/clear-text-storage-of-sensitive-data]：节点私钥必须以文件持久化才能跨重启保持 peerId，
+  // 文件权限 0600，且明确约定绝不上传仓库（P2P_KEY_FILE 留在服务器本地）
   fs.writeFileSync(keyFile, Buffer.from(privateKeyToProtobuf(key)).toString('hex'), {
     encoding: 'ascii',
     mode: 0o600,

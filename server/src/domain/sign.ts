@@ -16,7 +16,10 @@ const ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
 export function createRandomSeq(length = 16): string {
   let s = '';
   for (let i = 0; i < length; i += 1) {
-    s += ALPHABET[randomBytes(1)[0]! % ALPHABET.length]!;
+    // rejection sampling：拒绝 ≥248 的字节，让 0..247 均匀（248 = 4×62），消除取模偏置
+    let b = randomBytes(1)[0]!;
+    while (b >= 248) b = randomBytes(1)[0]!;
+    s += ALPHABET[b % ALPHABET.length]!;
   }
   return s;
 }
@@ -41,6 +44,7 @@ export function computeSignature(
   seq: string,
 ): string {
   const parts = token ? [tail, userId, token, appid, ts9, seq] : [tail, ts9, seq];
+  // lgtm[js/weak-cryptographic-algorithm]：平台签名算法必须 MD5（与 Python crawler/sign.py 逐字节对拍）
   return createHash('md5').update(joinByLengthDesc(parts), 'utf8').digest('hex');
 }
 

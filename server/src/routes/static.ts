@@ -20,6 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import { APK_DIR, VERSION_FILE, WEB_DIST } from '../config.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../logger.js';
+import { rateOk } from '../domain/ratelimit.js';
 
 const APK_NAME_RE = /^[A-Za-z0-9._-]+\.apk$/;
 
@@ -76,11 +77,15 @@ export async function registerStaticRoutes(app: FastifyInstance): Promise<void> 
 
   /* ---------------- /assets/<单层文件名> ---------------- */
   app.get('/assets/:name', async (req, reply) => {
+    if (!rateOk(req.ip, 'static', 300, 60)) {
+      return reply.code(429).send({ ok: false, error: 'too many requests' });
+    }
     const name = (req.params as Record<string, string>).name ?? '';
-    // 与 Python 一致：单层文件名，拒绝路径穿越
+    // 与 Python 一致：单层文件名，拒绝路径穿越（/ \ .. 全部拒绝）
     if (!name || name.includes('/') || name.includes('\\') || name.includes('..')) {
       return reply.code(404).send({ ok: false, error: 'not found' });
     }
+    // lgtm[js/path-injection]：name 已用白名单校验（单层、无 / \ ..），不会穿越
     const file = path.join(WEB_DIST, 'assets', name);
     try {
       const st = await fs.stat(file);
@@ -114,10 +119,14 @@ export async function registerStaticRoutes(app: FastifyInstance): Promise<void> 
 
   /* ---------------- /download/<*.apk> ---------------- */
   app.get('/download/:name', async (req, reply) => {
+    if (!rateOk(req.ip, 'download', 20, 60)) {
+      return reply.code(429).send({ ok: false, error: 'too many requests' });
+    }
     const name = (req.params as Record<string, string>).name ?? '';
     if (!APK_NAME_RE.test(name)) {
       return reply.code(404).send({ ok: false, error: 'not found' });
     }
+    // lgtm[js/path-injection]：name 已用白名单正则校验（^[A-Za-z0-9._-]+\.apk$），不会穿越
     const file = path.join(APK_DIR, name);
     try {
       const st = await fs.stat(file);
