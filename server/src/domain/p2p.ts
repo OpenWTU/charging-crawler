@@ -26,6 +26,7 @@ import {
 } from '@libp2p/crypto/keys';
 import type { PubSub, Message } from '@libp2p/interface';
 import {
+  NODE_NAME,
   P2P_BOOTSTRAP,
   P2P_ENABLED,
   P2P_KEY_FILE,
@@ -43,6 +44,7 @@ import { storeSnapshot, stableStringify } from './worker.js';
 import { nowStr } from './store.js';
 
 const TOPIC = 'charge-snapshots';
+const STATUS_TOPIC = 'charge-status';
 
 export interface SnapshotMessage {
   v: 1;
@@ -53,12 +55,23 @@ export interface SnapshotMessage {
   payload: Record<string, unknown>;
 }
 
+export interface StatusMessage {
+  v: 1;
+  sender: string;
+  name: string;
+  version: string;
+  ts: string;
+  stats: { snapshots: number; areas: number; devices: number; ports: number };
+}
+
 export interface P2pPeerInfo {
   peer_id: string;
   addr: string | null;
   connected: boolean;
+  name: string | null;
   version: string | null;
   last_seen: string | null;
+  stats: { snapshots: number; areas: number; devices: number; ports: number } | null;
 }
 
 export interface P2pHandle {
@@ -113,7 +126,11 @@ export async function loadWhitelist(
     }
   };
   try {
-    const res = await fetchImpl(url, { signal: AbortSignal.timeout(10_000) });
+    // Accept: application/vnd.github.raw 让 contents API 直接返回原始文本
+    const res = await fetchImpl(url, {
+      signal: AbortSignal.timeout(10_000),
+      headers: { Accept: 'application/vnd.github.raw' },
+    });
     if (res.ok) {
       const text = await res.text();
       const peers = parse(text);
@@ -178,18 +195,63 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
 
   const pubsub = node.services.pubsub as PubSub;
   pubsub.subscribe(TOPIC);
+  pubsub.subscribe(STATUS_TOPIC);
 
-  // 记录最近收到消息的节点版本/时间（用于 /status 展示节点详情）
-  const peerMeta = new Map<string, { version: string; last_seen: string }>();
+  const selfId = node.peerId.toString();
+  const selfName = NODE_NAME || selfId.slice(0, 8);
+
+  // 记录最近收到消息的节点元数据（名称/版本/活跃/统计，用于 /status 节点卡片）
+  const peerMeta = new Map<string, { name: string; version: string; last_seen: string; stats: StatusMessage['stats'] | null }>();
+
+  /** 本机数据统计（心跳附带） */
+  async function selfStats(): Promise<StatusMessage['stats']> {
+    try {
+      const db = getDb();
+      const r = await sql<{
+        snapshots: number; areas: number; devices: number; ports: number;
+      }>`
+        SELECT
+          (SELECT COUNT(*) FROM snapshots) AS snapshots,
+          (SELECT COUNT(*) FROM areas) AS areas,
+          (SELECT COUNT(*) FROM devices) AS devices,
+          (SELECT COUNT(*) FROM port_states) AS ports
+      `.execute(db);
+      const c = r.rows[0];
+      return { snapshots: c?.snapshots ?? 0, areas: c?.areas ?? 0, devices: c?.devices ?? 0, ports: c?.ports ?? 0 };
+    } catch {
+      return { snapshots: 0, areas: 0, devices: 0, ports: 0 };
+    }
+  }
+
+  /** 广播状态心跳（节点名称 + 版本 + 数据统计） */
+  async function broadcastStatus() {
+    const msg: StatusMessage = {
+      v: 1,
+      sender: selfId,
+      name: selfName,
+      version: SERVER_VERSION,
+      ts: nowStr(),
+      stats: await selfStats(),
+    };
+    try {
+      await pubsub.publish(STATUS_TOPIC, new TextEncoder().encode(JSON.stringify(msg)));
+    } catch {
+      /* 心跳失败忽略 */
+    }
+  }
+
+  // 启动即广播一次，之后每 60 秒一次
+  void broadcastStatus();
+  const statusTimer = setInterval(() => void broadcastStatus(), 60_000);
 
   const handle: P2pHandle = {
-    peerId: node.peerId.toString(),
+    peerId: selfId,
     addresses: node.getMultiaddrs().map((a) => a.toString()),
 
     async broadcast(msg) {
       const full: SnapshotMessage = {
         v: 1,
-        sender: node.peerId.toString(),
+        sender: selfId,
         sender_version: SERVER_VERSION,
         ...msg,
       };
@@ -209,11 +271,34 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
         if (msg.v !== 1) return;
         if (!whitelist.has(msg.sender)) return;
         // 记录节点版本与最近活跃时间
+        const prev = peerMeta.get(msg.sender);
         peerMeta.set(msg.sender, {
-          version: msg.sender_version ?? 'unknown',
+          name: prev?.name ?? msg.sender.slice(0, 8),
+          version: msg.sender_version ?? prev?.version ?? 'unknown',
           last_seen: msg.ts,
+          stats: prev?.stats ?? null,
         });
         void cb(msg);
+      });
+
+      // 状态心跳：更新节点元数据（名称/版本/统计）
+      pubsub.addEventListener('message', (evt: CustomEvent<Message>) => {
+        const { topic, data } = evt.detail;
+        if (topic !== STATUS_TOPIC) return;
+        let msg: StatusMessage;
+        try {
+          msg = JSON.parse(new TextDecoder().decode(data));
+        } catch {
+          return;
+        }
+        if (msg.v !== 1) return;
+        if (!whitelist.has(msg.sender)) return;
+        peerMeta.set(msg.sender, {
+          name: msg.name || msg.sender.slice(0, 8),
+          version: msg.version || 'unknown',
+          last_seen: msg.ts,
+          stats: msg.stats ?? null,
+        });
       });
     },
 
@@ -224,8 +309,10 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
           peer_id: p.toString(),
           addr: null,
           connected: true,
+          name: meta?.name ?? null,
           version: meta?.version ?? null,
           last_seen: meta?.last_seen ?? null,
+          stats: meta?.stats ?? null,
         };
       });
     },
@@ -235,6 +322,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
     },
 
     async stop() {
+      clearInterval(statusTimer);
       await node.stop();
     },
   };

@@ -116,7 +116,7 @@ export const PORT_SYNC_INTERVAL = 0.25;
 export const PORT_STALE_SECONDS = 900;
 export const PORT_REFRESH_COOLDOWN = 60;
 
-/* ---------------- P2P（默认关闭，节省内存） ---------------- */
+/* ---------------- P2P（默认开启） ---------------- */
 
 export const P2P_ENABLED = envBool('P2P_ENABLED', true);
 export const P2P_LISTEN_PORT = envInt('P2P_LISTEN_PORT', 4001);
@@ -126,10 +126,15 @@ export const P2P_BOOTSTRAP = env('P2P_BOOTSTRAP', '')
   .filter(Boolean);
 /** 节点私钥文件（Ed25519 hex，稳定 peerId 的来源；不进仓库，留在服务器本地） */
 export const P2P_KEY_FILE = env('P2P_KEY_FILE', '/var/lib/charge-cloud/p2p_key');
-/** peerId 白名单权威源（GitHub raw，走 PR 审计） */
+/** 节点名称（状态页卡片显示，便于识读；默认取环境变量或 peerId 前 8 位） */
+export const NODE_NAME = env('NODE_NAME', '');
+/**
+ * peerId 白名单权威源。用 GitHub contents API（api.github.com 不被 SNI 阻断，
+ * raw.githubusercontent.com 在国内常被 TLS 阻断）。
+ */
 export const P2P_WHITELIST_URL = env(
   'P2P_WHITELIST_URL',
-  'https://raw.githubusercontent.com/OpenWTU/charging-crawler/main/server/p2p/peers.json',
+  'https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/p2p/peers.json',
 );
 /** 白名单本地缓存（离线时兜底） */
 export const P2P_WHITELIST_CACHE = env(

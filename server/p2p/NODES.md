@@ -3,7 +3,7 @@
 App 启动时从 GitHub raw 拉取本文件：
 
 ```
-https://raw.githubusercontent.com/OpenWTU/charging-crawler/main/server/p2p/nodes.json
+https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/p2p/nodes.json
 ```
 
 ## 加节点

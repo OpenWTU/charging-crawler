@@ -42,7 +42,7 @@ public final class NodeDiscovery {
     public static final String DEFAULT_BASE = "https://charge.lizishuo.cn";
 
     private static final String DIRECTORY_URL =
-            "https://raw.githubusercontent.com/OpenWTU/charging-crawler/main/server/p2p/nodes.json";
+            "https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/p2p/nodes.json";
     private static final String MDNS_TYPE = "_charge-http._tcp.";
     private static final String PREFS = "charge_nodes";
     private static final String KEY_BASE = "node_base";
@@ -124,6 +124,8 @@ public final class NodeDiscovery {
             conn.setConnectTimeout(PROBE_TIMEOUT_MS);
             conn.setReadTimeout(PROBE_TIMEOUT_MS);
             conn.setRequestProperty("User-Agent", "ChargingPileApp");
+            // contents API 需要 raw header 才返回原始 JSON 文本（而非 base64 包装）
+            conn.setRequestProperty("Accept", "application/vnd.github.raw");
             InputStream in = conn.getInputStream();
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(in, StandardCharsets.UTF_8));

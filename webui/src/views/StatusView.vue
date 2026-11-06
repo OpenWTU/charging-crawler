@@ -69,11 +69,23 @@
           <div><dt>在线节点</dt><dd>{{ data.peers?.online ?? 0 }}</dd></div>
         </dl>
         <div v-if="(data.peers?.nodes || []).length" class="peer-list">
-          <div v-for="n in data.peers.nodes" :key="n.peer_id" class="peer-row">
-            <b class="mono">{{ short(n.peer_id) }}</b>
-            <span>v{{ n.version ?? '?' }}</span>
-            <span>{{ n.connected ? '在线' : '离线' }}</span>
-            <small>{{ n.last_seen ?? '' }}</small>
+          <div v-for="n in data.peers.nodes" :key="n.peer_id" class="peer-card">
+            <div class="peer-head">
+              <b>{{ n.name || short(n.peer_id) }}</b>
+              <span class="tag" :class="n.connected ? 'is-on' : 'is-off'">
+                {{ n.connected ? '在线' : '离线' }}
+              </span>
+            </div>
+            <div class="peer-meta">
+              <span class="mono">v{{ n.version ?? '?' }}</span>
+              <small>{{ n.last_seen ? '活跃 ' + n.last_seen : '暂无活跃' }}</small>
+            </div>
+            <div v-if="n.stats" class="peer-stats">
+              <span>快照 {{ n.stats.snapshots }}</span>
+              <span>区域 {{ n.stats.areas }}</span>
+              <span>设备 {{ n.stats.devices }}</span>
+              <span>端口 {{ n.stats.ports }}</span>
+            </div>
           </div>
         </div>
         <p v-else class="muted">暂无在线节点（单节点部署时为空，正常）</p>
@@ -175,8 +187,14 @@ onUnmounted(() => clearInterval(timer));
 .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
 .mono { font-family: ui-monospace, monospace; }
 .muted { color: var(--muted, #888); font-size: 12px; margin: 6px 0 0; }
-.peer-list { margin-top: 8px; display: grid; gap: 6px; }
-.peer-row { display: flex; gap: 8px; align-items: center; font-size: 12px; flex-wrap: wrap; }
-.peer-row b { font-size: 12px; }
+.peer-list { margin-top: 8px; display: grid; gap: 8px; }
+.peer-card { background: var(--surface-2, #f7f8fa); border-radius: 8px; padding: 10px; display: grid; gap: 6px; }
+.peer-head { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+.peer-head .tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+.peer-head .tag.is-on { background: var(--ok-bg, #e8f5e9); color: var(--ok, #2e7d32); }
+.peer-head .tag.is-off { background: var(--neutral-soft-bg, #f0f0f0); color: var(--muted, #888); }
+.peer-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted, #888); }
+.peer-stats { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text, #333); }
+.peer-stats span { background: var(--card, #fff); border-radius: 6px; padding: 3px 8px; }
 .footnote { color: var(--muted, #888); font-size: 11px; text-align: center; margin: 4px 0 0; }
 </style>
