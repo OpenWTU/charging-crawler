@@ -2681,7 +2681,7 @@ class CloudTest(unittest.TestCase):
                     wrapper = (
                         'for v in CHARGE_DB CHARGE_BACKUP_DIR CHARGE_CONFIG_DIR '
                         'CHARGE_STATE_DIR CHARGE_SOURCE_DIR CHARGE_BUNDLE_DIR PYTHON; do '
-                        'eval export "$v=$(cygpath -u "${!v}")"; done; '
+                        'export "$v=$(cygpath -u "${!v}")"; done; '
                         f'bash "{script}"')
                 else:
                     wrapper = f'bash "{script}"'
