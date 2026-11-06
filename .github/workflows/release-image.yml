@@ -46,6 +46,8 @@ jobs:
           context: .
           file: server/Dockerfile
           push: true
+          build-args: |
+            VERSION=${{ github.ref_name }}
           tags: |
             ghcr.io/openwtu/charging-crawler:latest
             ghcr.io/openwtu/charging-crawler:${{ github.ref_name }}

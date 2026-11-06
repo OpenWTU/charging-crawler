@@ -22,8 +22,11 @@ FROM node:24-alpine
 RUN apk add --no-cache tini curl tzdata
 
 WORKDIR /app
+# SERVER_VERSION 由 CI 构建时注入（ARG VERSION=tag），本地构建默认 dev
+ARG VERSION=dev
 ENV NODE_ENV=production \
-    TZ=Asia/Shanghai
+    TZ=Asia/Shanghai \
+    SERVER_VERSION=$VERSION
 
 # 生产依赖（libp2p 等全是纯 JS，无需编译工具）
 COPY server/package.json server/pnpm-lock.yaml ./
