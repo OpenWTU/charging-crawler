@@ -5,6 +5,7 @@ import android.content.pm.PackageInfo;
 
 import com.test19124.charging.net.NodeDiscovery;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -475,8 +476,43 @@ public final class Cloud {
         }
     }
 
+    /** 检查更新：GitHub releases/latest 优先（去中心化），失败回退服务器 /api/version。 */
     public static JSONObject fetchVersion() throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(base() + "api/version").openConnection();
+        try {
+            return fetchVersionFromGitHub();
+        } catch (Exception e) {
+            return fetchVersionFromServer();
+        }
+    }
+
+    /** GitHub 直读：releases/latest 拿 tag → 下载 version.json asset → apkPath 指向 GitHub。 */
+    private static JSONObject fetchVersionFromGitHub() throws Exception {
+        JSONObject latest = httpGetJson(
+                "https://api.github.com/repos/OpenWTU/charging-crawler/releases/latest");
+        String vjUrl = null;
+        String apkUrl = null;
+        JSONArray assets = latest.optJSONArray("assets");
+        if (assets != null) {
+            for (int i = 0; i < assets.length(); i += 1) {
+                JSONObject a = assets.optJSONObject(i);
+                String n = a == null ? "" : a.optString("name", "");
+                if ("version.json".equals(n)) vjUrl = a.optString("browser_download_url");
+                if ("app-debug.apk".equals(n)) apkUrl = a.optString("browser_download_url");
+            }
+        }
+        if (vjUrl == null || vjUrl.isEmpty()) throw new java.io.IOException("无 version.json asset");
+        JSONObject d = httpGetJson(vjUrl);
+        // apkPath 指向 GitHub asset（downloadApk 白名单已放行 GitHub Release 前缀）
+        if (apkUrl != null && !apkUrl.isEmpty()) d.put("apkPath", apkUrl);
+        return d;
+    }
+
+    private static JSONObject fetchVersionFromServer() throws Exception {
+        return httpGetJson(base() + "api/version");
+    }
+
+    private static JSONObject httpGetJson(String url) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(8000);
         conn.setRequestProperty("User-Agent", UA);

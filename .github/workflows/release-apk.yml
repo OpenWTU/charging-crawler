@@ -90,17 +90,27 @@ jobs:
         run: |
           SHA=$(sha256sum android/build/app-debug.apk | cut -d' ' -f1)
           SIZE=$(du -h android/build/app-debug.apk | cut -f1)
-          cat > version.json <<EOF
-          {
-            "versionCode": $VERSION_CODE,
-            "versionName": "$VERSION_NAME",
-            "apkPath": "/download/app-debug.apk?v=$VERSION_CODE",
-            "sizeText": "$SIZE",
-            "sha256": "$SHA",
-            "releasedAt": "$(date '+%Y-%m-%d %H:%M')",
-            "changelog": []
+          python3 - "$VERSION_CODE" "$VERSION_NAME" "$SHA" "$SIZE" <<'PY'
+          import json, subprocess, sys
+          code, name, sha, size = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+          # 更新说明：取本 tag 的提交信息（去掉空行）
+          try:
+              raw = subprocess.check_output(["git", "log", "-1", "--format=%B"], text=True)
+              changelog = [l.strip() for l in raw.strip().split("\n") if l.strip()]
+          except Exception:
+              changelog = []
+          d = {
+              "versionCode": int(code),
+              "versionName": name,
+              "apkPath": "/download/app-debug.apk?v=" + code,
+              "sizeText": size,
+              "sha256": sha,
+              "releasedAt": subprocess.check_output(["date", "+%Y-%m-%d %H:%M"]).decode().strip(),
+              "changelog": changelog,
           }
-          EOF
+          open("version.json", "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False, indent=2))
+          print("changelog:", changelog)
+          PY
           cat version.json
 
       - name: 发布 Release（上传 APK + version.json）
