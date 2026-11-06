@@ -1,0 +1,84 @@
+# 一键部署（他人可用）：
+#   cp server/.env.example server/.env
+#   docker compose up -d
+#
+# 说明：
+#  - 数据（SQLite）挂载到 ./data，配置（token_key）挂载到 ./config
+#  - 前端产物挂载到 /web（只读），不重建镜像也能换前端
+#  - P2P 默认关闭；要用时设 P2P_ENABLED=true 并暴露 4001 端口
+
+services:
+  app:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: charging-crawler-node:latest
+    container_name: charge-node
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8791:8791"   # 只绑本机，由宿主机 Nginx 反代
+    environment:
+      NODE_ENV: production
+      PORT: "8791"
+      DATABASE_PATH: /data/charge.db
+      WEB_DIST: /web
+      APK_DIR: /apk
+      TOKEN_KEY_FILE: /config/token_key
+      LOG_LEVEL: info
+      # 双跑期建议设 true，只读打开生产库，避免与 Python 抢写锁
+      DATABASE_READONLY: "false"
+      P2P_ENABLED: "false"
+      P2P_LISTEN_PORT: "4001"
+    volumes:
+      - ./data:/data
+      - ./config:/config:ro
+      - ./cloud/web/dist:/web:ro
+      - ./cloud/data/download:/apk:ro
+    # 1.6G 小内存机器的关键保护：超限直接被 OOM 杀掉而不是拖垮整机
+    mem_limit: 512m
+    memswap_limit: 768m
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8791/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # P2P 独立进程（可选）。默认不启动：
+  #   docker compose --profile p2p up -d
+  # 用独立容器是为了让主服务的 mem_limit 不被 libp2p 的常驻内存挤占
+  p2p:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: charging-crawler-node:latest
+    container_name: charge-node-p2p
+    restart: unless-stopped
+    profiles: ["p2p"]
+    command: ["node", "dist/p2p.js"]
+    ports:
+      - "4001:4001/tcp"
+      - "4001:4001/udp"
+    environment:
+      NODE_ENV: production
+      P2P_ENABLED: "true"
+      P2P_LISTEN_PORT: "4001"
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+      DATABASE_PATH: /data/charge.db
+      TOKEN_KEY_FILE: /config/token_key   # 只读，libp2p 侧不参与抓取
+    volumes:
+      - ./data:/data
+      - ./config:/config:ro
+    mem_limit: 256m
+    depends_on:
+      app:
+        condition: service_healthy

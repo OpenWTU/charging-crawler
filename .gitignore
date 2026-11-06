@@ -1,4 +1,4 @@
-﻿# build outputs
+# build outputs
 android/build/
 android/app/build/
 *.apk
@@ -17,6 +17,14 @@ cloud/data/version.json
 # node
 webui/node_modules/
 webui/dist/
+# node 后端（server/）
+server/node_modules/
+server/dist/
+server/.env
+server/.env.local
+server/coverage/
+# 本地 SQLite 数据（跑服务时生成）
+server/data/
 # misc
 *.log
 %TEMP%
