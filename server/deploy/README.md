@@ -20,6 +20,24 @@ DATA_DIR=/var/lib/charge-cloud docker compose up -d
 curl http://127.0.0.1:8791/health
 ```
 
+## ⚠️ 时区（重要）
+
+容器默认是 UTC，会把时间戳写慢 8 小时。**两个修复都已内置**，新部署不会踩坑：
+
+1. `Dockerfile`：`apk add tzdata` + `ENV TZ=Asia/Shanghai`
+2. `docker-compose.yml`：`TZ=Asia/Shanghai` + 挂载宿主 `/etc/localtime:/etc/localtime:ro`
+
+部署后验证：
+
+```bash
+curl -s http://127.0.0.1:8791/status | python3 -c "import sys,json;print(json.load(sys.stdin)['server_time'])"
+# 应与服务器 date '+%Y-%m-%d %H:%M:%S' 一致（北京时间）
+```
+
+如果宿主机的时区不是 Asia/Shanghai，`docker-compose.yml` 里的
+`/etc/localtime` 挂载会把宿主的时区带进容器——此时以 Dockerfile 的
+`TZ=Asia/Shanghai` 为准（Node 优先读 TZ 环境变量，需要镜像里的 tzdata）。
+
 ## 从 systemd 迁移到 Docker
 
 1. `systemctl stop charge-node`（旧 systemd 版）
