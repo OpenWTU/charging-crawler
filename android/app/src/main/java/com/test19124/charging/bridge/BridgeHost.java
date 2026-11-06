@@ -89,6 +89,9 @@ public interface BridgeHost {
     /** 公开状态页（/status）→ window.__onStatus。 */
     void status();
 
+    /** 手动切换连接的服务器节点 */
+    void setNodeBase(String url);
+
     /** 下载并安装更新包。 */
     void startUpdate(String apkPath, String sha256);
 }

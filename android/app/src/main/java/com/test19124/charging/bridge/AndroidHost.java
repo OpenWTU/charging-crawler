@@ -150,6 +150,12 @@ public final class AndroidHost {
         host.status();
     }
 
+    /** 手动切换连接的服务器节点（状态页卡片确认后调用） */
+    @JavascriptInterface
+    public void setNodeBase(String url) {
+        host.setNodeBase(url);
+    }
+
     @JavascriptInterface
     public void startUpdate(String apkPath, String sha256) {
         host.startUpdate(apkPath, sha256);

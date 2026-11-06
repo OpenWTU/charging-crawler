@@ -209,6 +209,11 @@ public final class ActivityBridgeHost implements BridgeHost {
     }
 
     @Override
+    public void setNodeBase(String url) {
+        net.setNodeBase(url);
+    }
+
+    @Override
     public void startUpdate(String apkPath, String sha256) {
         env.ui().post(() -> updater.download(apkPath, sha256));
     }

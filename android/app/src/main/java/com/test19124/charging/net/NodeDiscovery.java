@@ -186,6 +186,14 @@ public final class NodeDiscovery {
         DebugLog.add("节点切换: " + b);
     }
 
+    /** 手动切换节点（状态页卡片点击后由桥调用）；空地址忽略 */
+    public static synchronized void switchToNode(String url) {
+        String b = url == null ? "" : url.trim();
+        if (!b.isEmpty()) {
+            switchTo(b);
+        }
+    }
+
     private static SharedPreferences prefs() {
         return appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }

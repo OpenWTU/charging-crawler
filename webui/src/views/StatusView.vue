@@ -70,7 +70,9 @@
           <div><dt>在线节点</dt><dd>{{ data.peers?.online ?? 0 }}</dd></div>
         </dl>
         <div v-if="(data.peers?.nodes || []).length" class="peer-list">
-          <div v-for="n in data.peers.nodes" :key="n.peer_id" class="peer-card">
+          <div
+v-for="n in data.peers.nodes" :key="n.peer_id" class="peer-card"
+               :class="{ 'is-clickable': !!n.url }" @click="askSwitch(n)">
             <div class="peer-head">
               <b>{{ n.name || short(n.peer_id) }}</b>
               <span class="tag" :class="n.connected ? 'is-on' : 'is-off'">
@@ -112,7 +114,8 @@
  * 网页端直接 fetch，App 内走 AndroidHost.getStatus 桥（api/status.js 已封装）。
  */
 import { onMounted, onUnmounted, ref } from 'vue';
-import { getStatus } from '../api/status.js';
+import { showConfirmDialog } from 'vant';
+import { getStatus, switchNode } from '../api/status.js';
 import { friendlyErrorText } from '../api/transport.js';
 
 const props = defineProps({
@@ -136,6 +139,22 @@ async function load() {
   } finally {
     loading.value = false;
   }
+}
+
+/** 点击节点卡片：弹窗确认切换 */
+function askSwitch(n) {
+  if (!n.url) return;
+  showConfirmDialog({
+    title: '切换连接节点',
+    message: `切换到「${n.name || short(n.peer_id)}」（${n.url}）？`,
+    confirmButtonText: '切换',
+    cancelButtonText: '取消',
+  }).then(() => {
+    const ok = switchNode(n.url);
+    if (!ok) {
+      showConfirmDialog({ title: '提示', message: '当前版本不支持手动切换，请更新 App', confirmButtonText: '知道了' });
+    }
+  }).catch(() => {});
 }
 
 function fmtUptime(sec) {
@@ -196,6 +215,8 @@ onUnmounted(() => clearInterval(timer));
 .muted { color: var(--muted, #888); font-size: 12px; margin: 6px 0 0; }
 .peer-list { margin-top: 8px; display: grid; gap: 8px; }
 .peer-card { background: var(--surface-2, #f7f8fa); border-radius: 8px; padding: 10px; display: grid; gap: 6px; }
+.peer-card.is-clickable { cursor: pointer; }
+.peer-card.is-clickable:active { opacity: 0.75; }
 .peer-head { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
 .peer-head .tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
 .peer-head .tag.is-on { background: var(--ok-bg, #e8f5e9); color: var(--ok, #2e7d32); }

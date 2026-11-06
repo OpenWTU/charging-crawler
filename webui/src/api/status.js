@@ -18,3 +18,22 @@ export async function getStatus() {
   }
   return getJSON('/status');
 }
+
+/** 手动切换连接的服务器节点：App 走桥；网页端跳转到该节点地址 */
+export function switchNode(url) {
+  if (!url) return false;
+  if (isApp) {
+    const host = window.AndroidHost;
+    if (host && typeof host.setNodeBase === 'function') {
+      host.setNodeBase(url);
+      return true;
+    }
+    return false;
+  }
+  try {
+    window.location.href = url;
+    return true;
+  } catch {
+    return false;
+  }
+}

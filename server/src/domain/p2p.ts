@@ -27,6 +27,7 @@ import {
 import type { PubSub, Message } from '@libp2p/interface';
 import {
   NODE_NAME,
+  NODE_URL,
   P2P_BOOTSTRAP,
   P2P_ENABLED,
   P2P_KEY_FILE,
@@ -60,6 +61,7 @@ export interface StatusMessage {
   sender: string;
   name: string;
   version: string;
+  url: string;
   ts: string;
   stats: { snapshots: number; areas: number; devices: number; ports: number };
 }
@@ -70,6 +72,7 @@ export interface P2pPeerInfo {
   connected: boolean;
   name: string | null;
   version: string | null;
+  url: string | null;
   last_seen: string | null;
   stats: { snapshots: number; areas: number; devices: number; ports: number } | null;
 }
@@ -201,7 +204,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
   const selfName = NODE_NAME || selfId.slice(0, 8);
 
   // 记录最近收到消息的节点元数据（名称/版本/活跃/统计，用于 /status 节点卡片）
-  const peerMeta = new Map<string, { name: string; version: string; last_seen: string; stats: StatusMessage['stats'] | null }>();
+  const peerMeta = new Map<string, { name: string; version: string; url: string; last_seen: string; stats: StatusMessage['stats'] | null }>();
 
   /** 本机数据统计（心跳附带） */
   async function selfStats(): Promise<StatusMessage['stats']> {
@@ -230,6 +233,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
       sender: selfId,
       name: selfName,
       version: SERVER_VERSION,
+      url: NODE_URL,
       ts: nowStr(),
       stats: await selfStats(),
     };
@@ -280,6 +284,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
         peerMeta.set(fromId, {
           name: prev?.name ?? fromId.slice(0, 8),
           version: msg.sender_version ?? prev?.version ?? 'unknown',
+          url: prev?.url ?? '',
           last_seen: msg.ts,
           stats: prev?.stats ?? null,
         });
@@ -304,6 +309,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
         peerMeta.set(fromId, {
           name: msg.name || fromId.slice(0, 8),
           version: msg.version || 'unknown',
+          url: msg.url || '',
           last_seen: msg.ts,
           stats: msg.stats ?? null,
         });
@@ -319,6 +325,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
           connected: true,
           name: meta?.name ?? null,
           version: meta?.version ?? null,
+          url: meta?.url || null,
           last_seen: meta?.last_seen ?? null,
           stats: meta?.stats ?? null,
         };
