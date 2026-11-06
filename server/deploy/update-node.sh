@@ -73,11 +73,13 @@ else
   log "APK 下载失败（跳过，App 将沿用旧包）"
 fi
 
-# 3. 重建容器
+# 3. 更新：新镜像 tag 到 latest（compose 统一用 latest），重建容器
 cd "$COMPOSE_DIR" || exit 1
+export DATA_DIR="${DATA_DIR:-/var/lib/charge-cloud}"
+docker tag "$IMAGE:$TAG" "$IMAGE:latest"
 if ! docker compose up -d 2>&1; then
   log "重建失败，开始回退"
-  docker tag "$OLD_ID" "$IMAGE:$TAG"
+  docker tag "$OLD_ID" "$IMAGE:latest"
   docker compose up -d 2>&1 || log "!! 回退重建也失败，需人工介入"
   log "已回退到旧镜像"
   exit 1
@@ -96,7 +98,7 @@ done
 
 if [ "$OK" != "1" ]; then
   log "健康检查失败，开始回退"
-  docker tag "$OLD_ID" "$IMAGE:$TAG"
+  docker tag "$OLD_ID" "$IMAGE:latest"
   docker compose up -d 2>&1 || log "!! 回退重建也失败，需人工介入"
   sleep 5
   log "已回退到旧镜像 ${OLD_ID:0:12}"
