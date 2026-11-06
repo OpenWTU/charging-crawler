@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['test/**/*.test.ts'],
+    setupFiles: ['test/setup.ts'],
     globals: false,
     // 迁移/DB 测试会碰文件系统，串行更稳
     pool: 'forks',

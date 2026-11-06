@@ -15,6 +15,7 @@ import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerStateRoutes } from './routes/state.js';
 import { registerStaticRoutes } from './routes/static.js';
 import { registerMiscRoutes } from './routes/misc.js';
+import { registerUploadRoutes } from './routes/upload.js';
 
 export type App = FastifyInstance;
 
@@ -34,6 +35,8 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
   await registerStaticRoutes(app);
   // area-coords / controllers / free-rate
   await registerMiscRoutes(app);
+  // 写入：/api/snapshot、/api/device/register（P5；P8 切换后由 Node 扛写）
+  await registerUploadRoutes(app);
 
   // ---- 健康检查（Python 版 /health 的等价实现） ----
   app.get('/health', async (_req, reply) => {
