@@ -99,7 +99,10 @@ export function useHealth(health, nowTick) {
   const tokenHealthClass = computed(() => {
     const h = health.value;
     if (tokenWarnMinutes.value > 0) return 'is-warn';
-    return h && h.token_ready === false ? 'is-bad' : '';
+    // 只有「服务器来源且服务器令牌不可用」才标红；
+    // 降级到本地令牌且本地未过期时不算异常，不显示警告。
+    if (h && h.token_source === 'server' && h.token_ready === false) return 'is-bad';
+    return '';
   });
 
   let tokenWarnShown = false;
