@@ -94,7 +94,7 @@ jobs:
           {
             "versionCode": $VERSION_CODE,
             "versionName": "$VERSION_NAME",
-            "apkPath": "https://github.com/OpenWTU/charging-crawler/releases/download/${{ github.ref_name }}/app-debug.apk",
+            "apkPath": "/download/app-debug.apk?v=$VERSION_CODE",
             "sizeText": "$SIZE",
             "sha256": "$SHA",
             "releasedAt": "$(date '+%Y-%m-%d %H:%M')",
