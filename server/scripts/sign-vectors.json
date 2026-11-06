@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "tail": "/nearArea/xxx?isNearBy=Y",
+      "uid": "10001",
+      "token": "eyJhbGciOiJIUzI1NiJ9.abc.def",
+      "appid": "wx123",
+      "ts9": "170000000",
+      "seq": "abc123XYZ7890abc",
+      "sig": "eeb41c6a98a4fb42eef1605be2378c33"
+    },
+    {
+      "tail": "/nearArea/list?projectId=1",
+      "uid": "10001",
+      "token": "eyJhbGciOiJIUzI1NiJ9.abc.def",
+      "appid": "wx123",
+      "ts9": "170000000",
+      "seq": "abc123XYZ7890abc",
+      "sig": "4c5f548216232c1d1bdee6c1b53f22d6"
+    },
+    {
+      "tail": "/charge/ports?fromType=3",
+      "uid": "10001",
+      "token": "",
+      "appid": "wx123",
+      "ts9": "170000000",
+      "seq": "short",
+      "sig": "858d4223e3e4fd43db8e8b49d2e3affa"
+    },
+    {
+      "tail": "/user/userInfo",
+      "uid": "",
+      "token": "tok",
+      "appid": "",
+      "ts9": "999999999",
+      "seq": "aaaaaaaaaaaaaaaa",
+      "sig": "e137acda6c03072b5b52606026410688"
+    }
+  ],
+  "join": {
+    "parts": [
+      "a",
+      "bbbb",
+      "cc",
+      "ddddd",
+      "e"
+    ],
+    "joined": "dddddeccabbbb",
+    "parts3": [
+      "x",
+      "yyy",
+      "z"
+    ],
+    "joined3": "yyyzx"
+  }
+}
