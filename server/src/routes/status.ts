@@ -13,6 +13,7 @@ import { getWorkerState } from '../domain/worker.js';
 import { banlistStats } from '../domain/banlist.js';
 import { nowStr } from '../domain/store.js';
 import { P2P_ENABLED } from '../config.js';
+import { p2pPeers, p2pSelfId } from '../domain/p2p.js';
 
 export async function registerStatusRoutes(app: FastifyInstance): Promise<void> {
   app.get('/status', async (_req, reply) => {
@@ -37,11 +38,12 @@ export async function registerStatusRoutes(app: FastifyInstance): Promise<void> 
         runs: worker.runs,
         started_at: worker.started_at ?? null,
       },
-      // P9 libp2p 接入后填充；P7 先给空结构，前端无需改动
+      // P2P 节点（P2P_ENABLED=false 时为空结构）
       peers: {
-        online: 0,
+        self: p2pSelfId(),
+        online: p2pPeers().length,
         whitelist: 0,
-        nodes: [] as Array<{ peer_id: string; addr: string | null; connected: boolean }>,
+        nodes: p2pPeers(),
       },
       banlist: {
         devices: banned.devices,

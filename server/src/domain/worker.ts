@@ -15,6 +15,7 @@ import { WORKER_INTERVAL } from '../config.js';
 import { decryptToken } from './crypto.js';
 import { isAuthError, call as callPlatform } from './crawler.js';
 import { logger } from '../logger.js';
+import { broadcastSnapshot } from './p2p.js';
 import { pickToken, markPoolError, type TokenCandidate } from './tokens.js';
 import {
   cleanPortEntries,
@@ -225,17 +226,16 @@ export async function serverRefreshOnce(
     return last;
   }
   try {
-    await storeSnapshot(
-      {
-        captured_at: nowStr(),
-        project,
-        app_version: 'server',
-        token_user: uid,
-        areas: validAreas as unknown as CleanArea[],
-      },
-      'server',
-      db,
-    );
+    const snap = {
+      captured_at: nowStr(),
+      project,
+      app_version: 'server',
+      token_user: uid,
+      areas: validAreas as unknown as CleanArea[],
+    };
+    await storeSnapshot(snap, 'server', db);
+    // P2P 广播（未启用时 no-op）：服务端抓取的新快照也共享给白名单节点
+    void broadcastSnapshot(snap as unknown as Record<string, unknown>);
   } catch (e) {
     logger.error({ err: e }, '[refresh] 入库失败');
     return 'store-error';

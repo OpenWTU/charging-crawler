@@ -11,6 +11,7 @@ import { logger } from './logger.js';
 import { closeDb, createDb, getDb, getRaw, ping } from './db/index.js';
 import { migrate } from './db/migrate.js';
 import { startWorker } from './domain/worker.js';
+import { initP2p, stopP2p } from './domain/p2p.js';
 import { registerPortsRoutes } from './routes/ports.js';
 import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerStateRoutes } from './routes/state.js';
@@ -108,10 +109,14 @@ async function main(): Promise<void> {
     app.log.info('[worker] 只读模式，不启动');
   }
 
+  // P2P（默认关闭；P2P_ENABLED=true 时启动，白名单从 GitHub raw 拉取）
+  await initP2p();
+
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, '收到退出信号，正在关闭');
     try {
       if (stopWorkerFn) stopWorkerFn();
+      await stopP2p();
       await app.close();
       await closeDb();
     } finally {

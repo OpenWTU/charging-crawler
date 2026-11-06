@@ -124,6 +124,19 @@ export const P2P_BOOTSTRAP = env('P2P_BOOTSTRAP', '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+/** 节点私钥文件（Ed25519 hex，稳定 peerId 的来源；不进仓库，留在服务器本地） */
+export const P2P_KEY_FILE = env('P2P_KEY_FILE', '/var/lib/charge-cloud/p2p_key');
+/** peerId 白名单权威源（GitHub raw，走 PR 审计） */
+export const P2P_WHITELIST_URL = env(
+  'P2P_WHITELIST_URL',
+  'https://raw.githubusercontent.com/OpenWTU/charging-crawler/main/server/p2p/peers.json',
+);
+/** 白名单本地缓存（离线时兜底） */
+export const P2P_WHITELIST_CACHE = env(
+  'P2P_WHITELIST_CACHE',
+  '/var/lib/charge-cloud/p2p_peers.json',
+);
+export const P2P_MDNS = envBool('P2P_MDNS', false);
 
 /* ---------------- 服务端抓取 worker ---------------- */
 

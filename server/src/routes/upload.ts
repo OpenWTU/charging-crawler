@@ -33,6 +33,7 @@ import {
 import { parseToken, poolUpsert } from '../domain/tokens.js';
 import { isBanned, recordBan } from '../domain/banlist.js';
 import { rateOk } from '../domain/ratelimit.js';
+import { broadcastSnapshot } from '../domain/p2p.js';
 import { logger } from '../logger.js';
 
 /** 常量时间比较 hex 字符串（Python 用 hmac.compare_digest） */
@@ -261,6 +262,9 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
         logger.error({ err: e }, '[upload] token 保存失败');
       }
     }
+
+    // P2P 广播（未启用时 no-op）：把新快照同步给白名单内节点
+    void broadcastSnapshot(payload as unknown as Record<string, unknown>);
 
     return reply.send({
       ok: true,
