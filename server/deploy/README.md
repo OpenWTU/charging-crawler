@@ -105,7 +105,7 @@ Python 版有 **17 个 API 路径**，Node 版目前只实现 **7 个只读查�
 在 `/etc/nginx/sites-available/charge.lizishuo.cn` 的 `location /` **之前**插入：
 
 ```nginx
-location ~ ^/api/(overview|now|areas-ports|area-ports|analytics|history|version|latest)$ {
+location ~ ^/api/(overview|now|areas-ports|area-ports|analytics|history|version|latest|area-coords|controllers|free-rate)$ {
     proxy_pass http://127.0.0.1:8791;
     # ... 标准 proxy_set_header
 }
@@ -116,11 +116,11 @@ location ^~ /api/pile/ {
 }
 ```
 
-当前已切到 Node 的端点（**9 个**）：overview / now / areas-ports / area-ports /
-analytics / history / pile/ / version / latest。
+当前已切到 Node 的端点（**12 个**）：overview / now / areas-ports / area-ports /
+analytics / history / pile/ / version / latest / area-coords / controllers / free-rate。
 
 **仍走 Python 的**：/api/snapshot（上传）、/api/device/register、/api/refresh、
-/api/area-coords、/api/controllers、/api/free-rate、/admin/*、/（前端静态资源与 APK 下载）。
+/admin/*、/（前端静态资源与 APK 下载）。
 
 ⚠️ `/` 与 `/assets/` 暂不切：虽然 Node 已实现静态资源托管（流式发送），但前端页面是
 最后一道防线，Node 挂了不至于整站打不开；等 Node 稳定跑一段时间再切。
