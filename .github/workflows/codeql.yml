@@ -23,8 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - language: python
-            build-mode: none
+          # Python 版已下线（cloud/ crawler/ tests/ 是遗留代码，不分析）
           - language: javascript-typescript
             build-mode: none
     steps:
