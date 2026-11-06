@@ -76,3 +76,99 @@ systemctl disable --now charge-node     # 停 Node 版
 ```
 
 Python 版 `charge-cloud` 全程不受影响（Node 只读打开同一个库）。
+
+---
+
+## Nginx 灰度分流（2026-11-06 已上线）
+
+### 为什么不能全量切
+
+Python 版有 **17 个 API 路径**，Node 版目前只实现 **7 个只读查询**：
+
+| 类别 | 路径 | Node |
+|---|---|---|
+| 只读查询 | overview / now / areas-ports / area-ports / analytics / history | ✅ |
+| 只读查询 | pile/:device | ✅ |
+| 只读查询 | area-coords / controllers / free-rate / latest / **version** | ❌ |
+| **写入** | **snapshot（App 上传）/ device/register / refresh** | ❌ |
+| 管理 | `/admin/*` | ❌ |
+| 静态 | `/`（前端 web/dist） | ❌ |
+
+**全量转 8791 会让 App 上传失败、前端打不开、管理页进不去。**
+所以采用「按路径精确分流」：只切已验证的 7 个端点，其余一律留在 Python。
+
+⚠️ 特别注意 `/api/version`：Node 版目前返回的是**占位假数据**（versionCode 0），
+绝不能切过去，否则 App 的更新检查会失效。
+
+### 已应用的配置
+
+在 `/etc/nginx/sites-available/charge.lizishuo.cn` 的 `location /` **之前**插入：
+
+```nginx
+location ~ ^/api/(overview|now|areas-ports|area-ports|analytics|history)$ {
+    proxy_pass http://127.0.0.1:8791;
+    # ... 标准 proxy_set_header
+}
+
+location ^~ /api/pile/ {
+    proxy_pass http://127.0.0.1:8791;
+    # ... 标准 proxy_set_header
+}
+```
+
+Nginx 的 location 优先级：`^~` 前缀 > `~` 正则 > 普通前缀 `/`，
+所以这两个块会先于 `location /` 命中，其余路径自然落回 Python。
+
+备份在 `/root/nginx-charge-before-node-<时间戳>.conf`。
+
+### 上线后验证（实测全部通过）
+
+```bash
+# 读路径确实走 Node：直连 8791 与经 Nginx 的响应逐字段一致
+curl -s https://charge.lizishuo.cn/api/overview
+
+# 写路径仍走 Python：应返回业务校验错误，而不是 404
+curl -s -X POST https://charge.lizishuo.cn/api/snapshot -d '{}'
+#   -> 401 {"ok":false,"error":"时间戳非法"}
+curl -s -X POST https://charge.lizishuo.cn/api/refresh -d '{}'
+#   -> 401 {"ok":false,"error":"需要管理员登录后才能刷新"}
+
+# Node 上这些路径确实是 404（证明没被误分）
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8791/api/snapshot
+#   -> 404
+
+# /api/version 仍由 Python 提供真实版本号
+curl -s https://charge.lizishuo.cn/api/version
+#   -> versionCode 215 / versionName 1.11.39
+```
+
+### 下一步：补齐剩余接口后才能真正全量
+
+要完全替换 Python，Node 还需要实现：
+1. `POST /api/snapshot`（App 上传快照，含设备 HMAC 验签 + 时间戳校验 + nonce 防重放）
+2. `POST /api/device/register`（设备注册）
+3. `POST /api/refresh`（管理员触发抓取）
+4. `GET /api/version`（读 version.json）
+5. `GET /api/latest`、`GET /api/area-coords`、`GET /api/controllers`、`GET /api/free-rate`
+6. 静态资源托管（web/dist + APK 下载）
+7. 管理端全部接口
+
+### 运维观察点
+
+- `journalctl -u charge-node -f` 看 Node 日志
+- `systemctl show charge-node -p MemoryCurrent` 看内存（实测 28-35 MB）
+- 对拍脚本 `parity_server.py` 随时可重跑
+
+---
+
+## 已验证的数据链路现状（2026-11-06 13:00）
+
+```json
+"worker": { "last_run": "12:57:52", "last_result": "areas=no-token|ports=no-token" },
+"token_pool": { "count": 11, "valid": 0 }
+```
+
+**服务端抓取因为 token 池全部过期而抓不到数据**（数据停在最后一次 App 上传）。
+这不是 Node 分流引起的（分流只动读路径），而是「服务端依赖 token 抓取」这个模式本身的脆弱点——
+也正是要改成「App 本地抓取 + 上传」的原因。
+
