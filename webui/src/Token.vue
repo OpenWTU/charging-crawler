@@ -213,7 +213,7 @@ function start() {
 function save() {
   const t = text.value.trim();
   if (!t) return;
-  let r = '';
+  let r;
   try { r = saveToken(t); } catch (e) { r = 'error:' + errText(e); }
   if (r === 'ok') {
     text.value = '';

@@ -138,7 +138,7 @@ export function useRefresh(deps) {
     refreshing.value = true;
     progress.value = '…';
     // 桥方法缺失/同步抛错：复位状态并明确提示，不要停在「刷新中」
-    let started = false;
+    let started;
     try {
       started = refreshData() !== false;
     } catch (e) {

@@ -28,7 +28,7 @@ const emit = defineEmits(['switch']);
 
 function moveTab(e, idx) {
   const key = e && e.key;
-  let next = idx;
+  let next;
   if (key === 'ArrowRight') next = (idx + 1) % props.tabs.length;
   else if (key === 'ArrowLeft') next = (idx - 1 + props.tabs.length) % props.tabs.length;
   else if (key === 'Home') next = 0;

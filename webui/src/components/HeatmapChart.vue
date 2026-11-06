@@ -62,7 +62,7 @@ const cache = { theme: '', empty: '', rgb: '' };
 function style() {
   const key = props.theme === 'dark' ? 'dark' : 'light';
   if (cache.theme !== key) {
-    let cs = null;
+    let cs;
     try { cs = getComputedStyle(document.documentElement); } catch { cs = null; }
     cache.theme = key;
     cache.empty = (cs && cs.getPropertyValue('--heat-empty').trim()) || (key === 'dark' ? '#334155' : '#e2e8f0');

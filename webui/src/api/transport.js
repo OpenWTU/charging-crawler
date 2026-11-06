@@ -87,7 +87,7 @@ export async function getJSON(path, options = {}, timeoutMs = FETCH_TIMEOUT_MS) 
 // 需要自己看状态码/返回体的请求（刷新、导出等）：永远返回 {status, ok, data}
 export async function requestJSON(path, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
   const resp = await fetchWithTimeout(path, { cache: 'no-store', ...options }, timeoutMs);
-  let body = {};
+  let body;
   try { body = await resp.json(); } catch { body = {}; }
   return { status: resp.status, ok: resp.ok, data: isObj(body) ? body : {} };
 }

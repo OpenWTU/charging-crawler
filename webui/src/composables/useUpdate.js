@@ -28,7 +28,7 @@ export function useUpdate(deps = {}) {
 
   function doUpdate() {
     showUpdate.value = false;
-    let started = false;
+    let started;
     try {
       started = startUpdate(up.value.apkPath || '/download/app-release.apk',
         up.value.sha256 || '') !== false;
@@ -43,7 +43,7 @@ export function useUpdate(deps = {}) {
     silent = silentArg === true;
     upChecking.value = true;
     if (!silent) showToast('正在检查更新…');
-    let started = false;
+    let started;
     try {
       started = checkUpdate() !== false;
     } catch (e) {
