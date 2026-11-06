@@ -500,7 +500,8 @@ public final class Cloud {
         if (expectedSha == null || !expectedSha.matches("[0-9a-fA-F]{64}")) {
             throw new IOException("缺少有效的 sha256，已拒绝下载");
         }
-        if (!url.startsWith(base())) {
+        if (!url.startsWith(base())
+                && !url.startsWith("https://github.com/OpenWTU/charging-crawler/releases/download/")) {
             throw new IOException("非法的安装包地址");
         }
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
