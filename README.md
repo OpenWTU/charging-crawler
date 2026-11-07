@@ -52,25 +52,23 @@ docker-compose.yml       一键部署
 .github/workflows/       ci（检查）+ release-image（镜像）+ release-apk（APK）
 ```
 
-## 快速开始（Docker）
+## 快速开始（一条命令）
 
 ```bash
-# 1. 装 Docker（Ubuntu）
-curl -fsSL https://get.docker.com | sh
+# 装 Docker + 拉镜像 + 起容器 + 装凌晨自动更新 timer，全自动
+curl -fsSL -H "Accept: application/vnd.github.raw" \
+  "https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/deploy/install.sh" | bash
+```
 
-# 2. 拉部署文件
-mkdir -p /opt/charge-node
-# 放入仓库根 docker-compose.yml 和 server/deploy/update-node.sh
+可选参数（不填用默认）：
 
-# 3. 起服务（数据目录指向 SQLite + token_key 所在处）
-DATA_DIR=/var/lib/charge-cloud docker compose pull
-DATA_DIR=/var/lib/charge-cloud docker compose up -d
-
-# 4. 验证
-curl http://127.0.0.1:8791/health
+```bash
+NODE_NAME=我的节点 NODE_URL=https://我的域名 NODE_P2P_ADDR=/ip4/1.2.3.4/tcp/4001 \
+  bash install.sh
 ```
 
 镜像：`ghcr.io/openwtu/charging-crawler:latest`（CI 推 `v*` tag 自动构建）。
+自动更新：每天 03:00 拉最新镜像，`/health` 检查失败自动回退旧镜像（日志 `/var/log/charge-update.log`）。
 
 ## 功能
 
@@ -134,6 +132,9 @@ App 上传 → 节点 A 落库 → gossipsub 广播（topic "charge-snapshots"�
 - 加节点：部署新节点 → 在 `server/p2p/nodes.json` 里加一条（peerId / name / url / p2p 地址）→ PR 合入 main → 发版。所有节点与 App 自动生效（服务器据此鉴权+互连，App 据此发现+切换）。
 - App 端节点发现：启动时从 GitHub contents API 拉 `nodes.json`，逐个 `/health` 探测选第一个通的；mDNS 发现局域网节点；全失败回退内置 `charge.lizishuo.cn`。
 - 状态页节点卡片：显示节点名称（NODE_NAME）/版本/数据统计，可点击手动切换连接节点。
+- 自动互连：节点启动时尝试连接目录里所有节点的 `p2p` 地址，任一方向连通即可（TCP 全双工），NAT 后无需人工配方向。
+- **数据同步范围**：只广播新产生的快照（`body_sha256` 去重）；节点加入前的历史不回填。
+- 在线节点计数 `online` 为其他节点数，`online_total` 含本机；状态页显示「在线节点（含本机）」。
 
 ## 构建与发布
 
@@ -142,7 +143,7 @@ App 上传 → 节点 A 落库 → gossipsub 广播（topic "charge-snapshots"�
 cd webui && pnpm install && pnpm run build   # 输出到 webui/dist
 
 # APK（本机，需 Android SDK/JDK + release keystore）
-CHARGE_VERSION_CODE=2000000 CHARGE_VERSION_NAME=2.2.3 python android/build.py
+CHARGE_VERSION_CODE=2003001 CHARGE_VERSION_NAME=2.3.1 python android/build.py
 
 # Docker 镜像（本地验证）
 docker compose build
@@ -164,7 +165,7 @@ docker compose build
 
 ## 版本与测试
 
-- App：`2.2.3`（versionCode 2002003）
+- App：`2.3.1`（versionCode 2003001）
 - Node 后端测试：`cd server && pnpm test`（53 项，含密码学对拍、端点边界、P2P 两节点互传、worker mock）
 - 只读接口曾与 Python 版 24/24 对拍一致（Python 版已删除，见 git 历史）
 - 签名：release keystore 保持仓库外，SHA256 见 `/api/version`

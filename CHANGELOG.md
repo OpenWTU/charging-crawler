@@ -6,6 +6,25 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.2.3`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.3.x] - 2026-11-07
+
+### P2P 多节点
+- 节点目录 `nodes.json` 合并原 `peers.json`（peerId 白名单 + App 目录单一真相源）
+- 白名单带 P2P 地址：节点启动自动尝试连接全部已知节点（NAT 后单向建连即通，无需人工配方向）
+- 消息鉴权改用 libp2p `SignedMessage.from`（签名来源，防伪造 sender）
+- 节点状态心跳（名称/版本/数据统计，60 秒），状态页节点卡片化
+- 在线节点计数含本机（`online_total`）
+
+### 修复
+- 令牌池 `cover_until` 用最晚到期（原用最早到期，新上传的 token 体现不出来）
+- Android 允许明文 HTTP（`usesCleartextTraffic`），修复切换到 http 备用节点失败
+- 健康条令牌时间来源标注（服务器/本地），降级本地未过期不报警
+- OverviewCache 合并服务器 overview 时服务器数据优先
+
+### 部署
+- `server/deploy/install.sh` 一条命令部署（装 Docker + 起容器 + 装凌晨自动更新 timer）
+- `docker-compose.node.yml` 纯镜像部署模板
+
 ## [v2.2.x] - 2026-11-06
 
 Node/TypeScript 全量重写稳定版。

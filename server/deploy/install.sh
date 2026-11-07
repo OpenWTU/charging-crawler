@@ -45,10 +45,18 @@ curl -fsSL -H "$GH_HEADER" "$RAW_BASE/server/deploy/update-node.sh" \
 chmod +x "$DEPLOY_DIR/update-node.sh"
 bash -n "$DEPLOY_DIR/update-node.sh"
 
+say "5/6 写 .env（持久化节点配置，自动更新时也生效）"
+cat > "$DEPLOY_DIR/.env" <<EOF
+DATA_DIR=$DATA_DIR
+NODE_NAME=$NODE_NAME
+NODE_URL=$NODE_URL
+NODE_P2P_ADDR=$NODE_P2P_ADDR
+EOF
+chmod 600 "$DEPLOY_DIR/.env"
+
 say "5/6 启动容器（NODE_NAME=$NODE_NAME）"
 cd "$DEPLOY_DIR"
-DATA_DIR="$DATA_DIR" NODE_NAME="$NODE_NAME" NODE_URL="$NODE_URL" \
-  NODE_P2P_ADDR="$NODE_P2P_ADDR" docker compose up -d
+docker compose up -d
 
 say "6/6 安装凌晨自动更新 timer（每天 03:00，失败自动回退）"
 cat > /etc/systemd/system/charge-node-update.service <<EOF
