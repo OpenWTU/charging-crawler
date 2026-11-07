@@ -20,6 +20,7 @@
 - Android 允许明文 HTTP（`usesCleartextTraffic`），修复切换到 http 备用节点失败
 - 健康条令牌时间来源标注（服务器/本地），降级本地未过期不报警
 - OverviewCache 合并服务器 overview 时服务器数据优先
+- Android 系统状态栏跟随页面深浅色（含图标明暗），深色模式不再留浅色状态栏
 
 ### 部署
 - `server/deploy/install.sh` 一条命令部署（装 Docker + 起容器 + 装凌晨自动更新 timer）

@@ -22,7 +22,7 @@ export { getAnalytics, getFreeRate } from './analytics.js';
 // App 原生桥命令
 export {
   getSettings, setUploadToken, clearToken, saveToken, captureToken,
-  startDiagnose, stopDiagnose, showLog, checkUpdate, startUpdate,
+  startDiagnose, stopDiagnose, showLog, checkUpdate, startUpdate, setDarkMode,
 } from './native.js';
 
 // 管理后台（/admin/api/*）

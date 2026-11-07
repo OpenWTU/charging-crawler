@@ -55,6 +55,12 @@ public final class AndroidHost {
         host.showLog();
     }
 
+    /** 网页主题（深/浅）：同步系统状态栏底色与图标明暗；旧前端不会调用。 */
+    @JavascriptInterface
+    public void setDarkMode(boolean dark) {
+        host.setDarkMode(dark);
+    }
+
     @JavascriptInterface
     public String getSettings() {
         return host.settingsJson();
