@@ -8,7 +8,7 @@
  */
 import { computed, watch } from 'vue';
 import { showToast } from 'vant';
-import { parseCaptured, toMs, fmtExp, tsText, agoText } from '../format.js';
+import { parseCaptured, toMs, tsText, agoText } from '../format.js';
 
 const TOKEN_WARN_KEY = 'charge_token_warned';
 
@@ -83,8 +83,8 @@ export function useHealth(health, nowTick) {
   const tokenCoverText = computed(() => {
     const at = tokenCoverAt.value;
     if (!at) return '';
-    // 用完整时间（含日期）：跨天时「覆盖到 08:00」看不出是哪天
-    const text = tsText(fmtExp(at));
+    // at 已是毫秒时间戳，直接交给 tsText（不要再套 fmtExp 做字符串二次转换）
+    const text = tsText(at);
     return text ? '覆盖到 ' + text : '';
   });
   // 剩余分钟（仅令牌确认可用且 ≤15 分钟时 >0；状态未知不提醒，避免误报）

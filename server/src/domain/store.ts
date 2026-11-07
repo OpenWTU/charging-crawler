@@ -112,7 +112,8 @@ export async function splitValidAreas(
 
   // 首次上传（areas 表为空）会接受任意区名来建立 known 集合——这是初始化必需，
   // 但必须限制单次数量，否则一次请求就能灌进成千上万伪造区名污染公共库
-  const MAX_FIRST_UPLOAD_AREAS = 200;
+  // 与 validatePayload 的 500 上限对齐：卡 200 会让真实区数 >200 的全新节点永远无法引导
+  const MAX_FIRST_UPLOAD_AREAS = 500;
   if (known.size === 0 && areas.length > MAX_FIRST_UPLOAD_AREAS) {
     logger.warn(
       { count: areas.length, limit: MAX_FIRST_UPLOAD_AREAS },

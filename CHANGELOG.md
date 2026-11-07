@@ -3,8 +3,80 @@
 本文件格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-> 说明：仓库内代码另有一套历史内部版本号（当前 `2.3.7`），
+> 说明：仓库内代码另有一套历史内部版本号（当前 `2.3.8-dev`），
 > 对外发布使用独立语义化版本与 Git tag。
+
+## [未发布] - 待发版
+
+按「轻微级问题也要修、攒批而不反复发版」的约定，本段累积待发布内容。
+
+### 修复（第三轮复审发现）
+
+批量修复后又做了一轮「只审修复本身」的复审，抓到并修掉：
+
+- `bodyLimit` 若正好等于 `MAX_BODY`，Fastify 会在进 handler 前拦掉超限请求并回
+  `{"error":"internal_error"}`，反而破坏契约 → 改为 `MAX_BODY + 1024`，
+  让 upload 分支自己返回规范的 `{ok:false,error:'请求体大小非法'}`
+- `startWorker` 的停止函数原来只跟踪「第一轮」，`stop()` 等不到后续轮次
+  （实测在途时 0ms 返回、之后仍在写库）；改为跟踪当前轮 + 最多等 5 秒
+  （避免一轮几百个桩时关不掉容器）
+- 端口清理改成「本次端口数 ≥ 库里已有数才清」后，若上游长期只返回部分端口，
+  真下线的端口会永久残留（公开页空位数偏大）→ 补一条按 `updated_at`
+  的 24 小时兜底清理
+- `tokenCoverText` 双重时间转换（`tsText(fmtExp(at))`）导致「覆盖到 …」恒为空
+  ——这是批量修复时我自己引入的回归，已改为 `tsText(at)`
+- `corrupt` 标记原来只在 `StateBuilder` 里写、前端无人读、且文案数据源是
+  `SecureState.settingsJson()`，属于死字段 → 在 `SecureState` 也写入并在
+  `loadTokenState()` 里消费（令牌解析失败显示「已失效」而不是「从未设置」）
+- `mergeInto` 改用 `isOnline()`（与 `server_online` 同判据）：原来 40s 的独立
+  TTL 会让「挂后台再回前台」时健康条闪一次「本地令牌 / 最后更新 —」
+- 私钥长度下限 60 → 100（Ed25519 protobuf 实际 136 hex，60 会放过 30 字节的无效值）
+- `NODE_P2P_ADDR` 拼接地址时补 `/p2p/` 与尾斜杠保护（与白名单解析规则一致）
+- 心跳的 `p2p` 地址保留上一次已知值（对方某次不广播时不清空）
+- nonce 格式非法时只按 IP 计数（`device_id` 来自未验签的头，
+  按 device 记会让人用垃圾 nonce 打掉别人的设备）
+- 坏 JSON / payload 校验失败的日志由 warn 降为 debug（限流可被绕过，warn 会被刷爆）
+- 首次上传区域数上限 200 → 500（与 `validatePayload` 对齐，避免真实区数 >200
+  的全新节点永远无法引导）
+
+### 修复（37 项轻微级）
+
+**server**
+- `/status` 的 `db_size` 计入 `-wal`/`-shm`（WAL 下原来严重低估）
+- 上传：nonce 格式非法也计入 `bad_sig`（原来不计数，可无限试探）
+- 上传：JSON / payload 校验失败记日志并返回具体原因（原来静默 400）
+- `/api/version` 去掉 UTF-8 BOM（App 侧 `new JSONObject` 遇 BOM 会一直失败，
+  表现是「检查更新永远失败」而服务器看着正常）
+- `crypto.tokenKey`：错误信息给出期望长度；密钥目录改用 `path.dirname`
+  （文件名不含分隔符时原实现会把目录算错）
+- `p2p.loadOrCreateKey` 校验 hex 格式（截断/空文件原来直接抛错 → 触发整站 P2P 降级）
+- `p2p`：`addresses` 优先用 `NODE_P2P_ADDR`；心跳里的 `p2p` 地址存入 `peerMeta`，
+  `/status` 的 `nodes[].addr` 不再恒为 null
+- worker 端口清理只在「本次端口数 ≥ 库里已有数」时执行
+  （上游偶尔只返回部分端口，无条件 `NOT IN` 会把有效端口删掉）
+- `startWorker` 的停止函数改为返回 Promise，等正在跑的一轮结束再关库
+- `/api/pile/*` 去掉二次 `decodeURIComponent`（Fastify 已解码）
+- `schema_migrations.applied_at` 改用本地时间（原来混用 UTC 与其他表的本地时间）
+- `bodyLimit` 对齐 `MAX_BODY`（原来 8MB，超限时返回 Fastify 默认错误体，破坏契约）
+- 首次上传（areas 表为空）限制单次最多 200 个区名（防一次请求灌入大量伪造数据）
+
+**webui**
+- 状态页：长效令牌兼容布尔/数字；节点无地址时给出提示；切换节点后等 4 秒再刷新
+  （覆盖最长 6 秒的健康探测）
+- 统计条 idle/charging/fault 加 `Number()` 兜底（概览缺字段时不再显示 NaN）
+- 健康条「覆盖到」显示完整时间（跨天时不再看不出是哪天）
+- 分析页：请求序号过期时返回 null 且不覆盖已有数据（原来会闪成「暂无数据」）
+- `transport.callBridgeJSON` 结束时清理 `window[cbKey]`（并发场景只删自己那个）
+- 删掉 App.vue 的 `uploadTokenOn` 死状态
+- `index.html` 补 `theme-color`（网页端工具栏跟随深浅色）
+
+**android**
+- `RefreshService.postProgress` 用 `JSONObject.quote` 转义（文案含引号会让整条 JS 语法错误）
+- `StateBuilder`：token 解析失败时标 `corrupt`（原来误显示「尚未设置令牌」）
+- `OverviewCache` 改用不可变 `Snapshot`（json 与时间戳原子读写），
+  `MERGE_TTL_MS` 120s → 40s（服务器掉线后健康条少显示 80 秒旧状态）
+- `navAmap` / `Updater.download` 补 `isGone()` 判断
+- `StatusBarTheme` / `MainActivity` 补前瞻注释（targetSdk 35、新增 requestCode）
 
 ## [v2.3.7] - 2026-11-08
 

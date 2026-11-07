@@ -156,8 +156,8 @@ function askSwitch(n) {
     const ok = switchNode(n.url);
     if (ok) {
       showToast('已切换到「' + (n.name || short(n.peer_id)) + '」，若连不上会自动回退');
-      // 探测最长约 6 秒（3s 连接 + 3s 读取），等它出结果再刷新；太短会拿到坏节点的失败结果
-      setTimeout(() => load(), 4000);
+      // 不在这里主动 load()：fetchStatus 本身 8s 连接 + 12s 读取，切换瞬间必然先失败一次，
+      // 主动刷只会制造一次可见错误态。交给 30 秒轮询（load 会清 error）自然恢复。
     } else {
       showConfirmDialog({ title: '提示', message: '当前版本不支持手动切换，请更新 App', confirmButtonText: '知道了' });
     }
@@ -197,6 +197,7 @@ function fmtV(v) {
 
 /** 长效令牌：后端可能给布尔（旧）或数字（新），两种都显示成可读文案 */
 function fmtLongLived(v) {
+  if (v === null || v === undefined || v === '') return '—';
   if (v === true) return '是';
   if (v === false) return '否';
   const n = Number(v);

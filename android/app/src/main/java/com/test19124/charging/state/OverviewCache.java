@@ -51,7 +51,7 @@ public final class OverviewCache {
     private volatile boolean loading = false;
     /** 是否已经尝试过至少一次拉取（没试过时乐观认为在线，避免首屏闪离线态） */
     private volatile boolean everFetched = false;
-    /** 最近一次成功时间。与 cacheAt 分开记：invalidateAndRefetch 清缓存时不清它 */
+    /** 最近一次成功时间。与 snapshot 分开记：invalidateAndRefetch 清缓存时不清它 */
     private volatile long lastOkAt = 0;
 
     public OverviewCache(Host host) {
@@ -98,7 +98,7 @@ public final class OverviewCache {
      * 服务器是否可达。前端据此决定是否显示「分析」「历史」等高阶页签。
      *
      * <p>判定：还没试过时乐观认为在线（避免首屏闪一下离线态）；试过之后只看
-     * 「最近 2 分钟内是否成功拉取过 overview」。用 lastOkAt 而不是 cache 判断，
+     * 「最近 2 分钟内是否成功拉取过 overview」。用 lastOkAt 而不是 snapshot 判断，
      * 这样上传成功后 {@link #invalidateAndRefetch()} 清缓存不会让页签闪动。</p>
      */
     public boolean isOnline() {
@@ -129,7 +129,9 @@ public final class OverviewCache {
     /** 把 /api/overview 的健康/令牌池字段合并进 getState（前端现有 getOverview 直接读取）。 */
     public void mergeInto(JSONObject root) {
         Snapshot s = snapshot; // 一次读取，json 与时间戳保证配套
-        if (s == null || System.currentTimeMillis() - s.at > MERGE_TTL_MS) {
+        // 用 isOnline()（与 server_online 同一判据）而不是单独的短 TTL：
+        // 两者不同步会在「挂后台 >MERGE_TTL 回前台」时闪一次「本地令牌 / 最后更新 —」
+        if (s == null || !isOnline()) {
             return;
         }
         try {

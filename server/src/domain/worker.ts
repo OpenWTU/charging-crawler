@@ -343,6 +343,10 @@ export async function syncPortsImpl(
             const marks = sql.join(ports.map((p) => p.port));
             await sql`DELETE FROM port_states WHERE device_hex = ${dev.device_hex} AND port NOT IN (${marks})`.execute(trx);
           }
+          // 兜底：上游若长期只返回部分端口，「NOT IN 清理」永不触发，真下线的端口会永久残留
+          //（公开页的空位数会偏大）。按 updated_at 清掉超过 24 小时没再出现的端口。
+          const staleCut = nowStr(new Date(Date.now() - 24 * 3600 * 1000));
+          await sql`DELETE FROM port_states WHERE device_hex = ${dev.device_hex} AND updated_at < ${staleCut}`.execute(trx);
           for (const p of ports) {
             await trx
               .insertInto('port_states')
@@ -467,25 +471,32 @@ export function startWorker(
 ): () => Promise<void> {
   let stopped = false;
   workerState.started_at = nowStr();
-  let inflight: Promise<void> = Promise.resolve();
+  // 跟踪「当前正在跑的那一轮」（不能只记第一轮，否则 stop 等不到后续轮次）
+  const state: { current: Promise<void> } = { current: Promise.resolve() };
   const tick = async (): Promise<void> => {
     if (stopped) return;
+    state.current = (async () => {
+      try {
+        await workerRound(callImpl, db);
+      } catch (e) {
+        logger.error({ err: e }, '[worker] 异常');
+      }
+    })();
     try {
-      await workerRound(callImpl, db);
-    } catch (e) {
-      logger.error({ err: e }, '[worker] 异常');
+      await state.current;
+    } catch {
+      /* 上面已记日志 */
     }
     if (!stopped) setTimeout(tick, intervalMs).unref?.();
   };
   // 启动后立即跑一轮（与 Python start_worker 一致）
-  inflight = tick();
-  // 返回 async：等正在跑的那一轮结束后再返回，避免 closeDb 时还有写入在途
+  void tick();
+  // 返回 async：等当前轮次结束再返回（最多等 5 秒，避免一轮几百个桩时关不掉容器）
   return async () => {
     stopped = true;
-    try {
-      await inflight;
-    } catch {
-      /* 轮次内部已记日志 */
-    }
+    await Promise.race([
+      state.current.catch(() => {}),
+      new Promise<void>((r) => setTimeout(r, 5_000)),
+    ]);
   };
 }

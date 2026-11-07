@@ -68,6 +68,12 @@ export function useLiveData(notify) {
     try {
       const s = getSettings() || {};
       if (s.token_present === false) {
+        // 有令牌但解析失败：属于「已失效」，不能算「从未设置」（文案会误导用户）
+        if (s.corrupt === true) {
+          tokenInvalid.value = true;
+          tokenUnset.value = false;
+          return;
+        }
         tokenInvalid.value = Number(s.expires_at || 0) > 0;
         tokenUnset.value = !tokenInvalid.value;
       } else {

@@ -43,6 +43,11 @@ public final class SecureState {
             ApiClient.Jwt jwt = ApiClient.parseJwt(t);
             boolean valid = jwt != null && jwt.expiresAt * 1000 > System.currentTimeMillis();
             o.put("token_present", valid);
+            if (jwt == null && t != null && !t.isEmpty()) {
+                // 有令牌但解析失败（截断/格式不对）：标 corrupt，
+                // 否则前端只看 token_present=false 会显示「尚未设置令牌」，误导用户
+                o.put("corrupt", true);
+            }
             if (jwt != null) {
                 o.put("expires_at", jwt.expiresAt);
                 o.put("remaining_seconds", Math.max(0, jwt.expiresAt

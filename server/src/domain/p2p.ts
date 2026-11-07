@@ -107,7 +107,7 @@ export async function loadOrCreateKey(keyFile: string): Promise<Uint8Array> {
     const hex = fs.readFileSync(keyFile, 'ascii').trim();
     // 校验内容：截断/空文件会让 privateKeyFromProtobuf 抛错并触发整站降级，
     // 这里提前给出可诊断的错误（绝不静默覆盖——覆盖会丢 peerId）
-    if (hex.length < 60 || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) {
+    if (hex.length < 100 || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) {
       throw new Error(
         `节点私钥文件损坏: ${keyFile}（${hex.length} 字符，应为偶数长度 hex；`
           + '请从备份恢复，或删掉它让节点以新身份重新加入白名单）',
@@ -313,7 +313,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
     // 优先用显式配置的公网地址（NODE_P2P_ADDR）；否则回退到 libp2p 监听到的地址
     // （注意容器内多为 172.x/127.0.0.1，对外不可达，所以生产应显式配 NODE_P2P_ADDR）
     addresses: NODE_P2P_ADDR
-      ? [`${NODE_P2P_ADDR}/p2p/${selfId}`]
+      ? [NODE_P2P_ADDR.includes('/p2p/') ? NODE_P2P_ADDR : `${NODE_P2P_ADDR.replace(/\/$/, '')}/p2p/${selfId}`]
       : node.getMultiaddrs().map((a) => a.toString()),
 
     async broadcast(msg) {
@@ -378,7 +378,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
           name: msg.name || fromId.slice(0, 8),
           version: msg.version || 'unknown',
           url: msg.url || '',
-          addr: msg.p2p || '',
+          addr: msg.p2p || peerMeta.get(fromId)?.addr || '',
           last_seen: msg.ts,
           stats: msg.stats ?? null,
         });

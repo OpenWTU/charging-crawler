@@ -35,8 +35,10 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
     // 用 `true` 会信任客户端任意伪造的 XFF，直接绕过 IP 限流与自动拉黑；
     // 生产需显式 TRUST_PROXY=true 才开启（配合 Nginx 反代）。
     trustProxy: process.env.TRUST_PROXY === 'true' ? '127.0.0.1,172.16.0.0/12' : false,
-    // 与 upload 的 MAX_BODY 保持一致：太大时 Fastify 会用默认错误体，破坏 {ok:false,error} 契约
-    bodyLimit: MAX_BODY,
+    // 略大于 MAX_BODY：让超限请求能进 handler，由 upload 分支返回规范的
+    // {ok:false,error:'请求体大小非法'}（若 bodyLimit == MAX_BODY，Fastify 会在
+    // 进 handler 前就拦掉并回 {"error":"internal_error"}，契约反而不一致）
+    bodyLimit: MAX_BODY + 1024,
     ...opts,
   });
 

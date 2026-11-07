@@ -87,8 +87,8 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(401).send({ ok: false, error: '时间戳过期' });
     }
     if (!NONCE_RE.test(nonce)) {
-      // 格式非法的 nonce 与验签失败同等对待，否则「乱发 nonce」不计数、可无限试探
-      recordBan(deviceId || null, ip, 'bad_sig');
+      // 只按 IP 计数：device_id 来自未验签的头，按 device 记会让人用垃圾 nonce 打掉别人的设备
+      recordBan(null, ip, 'bad_sig');
       return reply.code(401).send({ ok: false, error: 'nonce 非法' });
     }
 
@@ -123,7 +123,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     try {
       obj = JSON.parse(body.toString('utf8'));
     } catch (e) {
-      logger.warn({ err: e, ip, ua }, '[upload] 请求体不是合法 JSON');
+      logger.debug({ err: e, ip, ua }, '[upload] 请求体不是合法 JSON');
       return reply.code(400).send({ ok: false, error: '数据非法' });
     }
     const rawToken = obj.token;
@@ -132,7 +132,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     try {
       payload = validatePayload(obj);
     } catch (e) {
-      logger.warn({ err: e, ip, ua }, '[upload] payload 校验失败');
+      logger.debug({ err: e, ip, ua }, '[upload] payload 校验失败');
       return reply
         .code(400)
         .send({ ok: false, error: `数据非法：${e instanceof Error ? e.message : String(e)}` });
