@@ -90,7 +90,8 @@ public final class StateBuilder {
             }
             root.put("token", token);
             // 服务器可达性：前端据此决定要不要显示「分析」「历史」这两个需要云端数据的页签。
-            // 放在 mergeInto 之前，overview 里若有同名字段也不会覆盖（mergeInto 只补缺失键）。
+            // 注意：mergeInto 会用 overview 的同名键**覆盖**本地值（服务器数据权威），
+            // 所以 server_online 故意不在 mergeInto 的覆盖清单里，这里 put 的值会保留。
             root.put("server_online", overview.isOnline());
             overview.mergeInto(root);
             return root.toString();

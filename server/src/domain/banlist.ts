@@ -24,6 +24,17 @@ const BAN_SECONDS = 3600; // 1 小时
 const byDevice = new Map<string, BanState>();
 const byIp = new Map<string, BanState>();
 
+/**
+ * 惰性清扫：只有条目超过阈值才扫一遍（正常规模下几乎零成本），
+ * 避免伪造 IP/device 把内存撑爆（配合 XFF 伪造的风险面）。
+ */
+function sweep(m: Map<string, BanState>, now: number): void {
+  if (m.size < 5000) return;
+  for (const [k, s] of m) {
+    if (s.bannedUntil <= now && now - s.windowStart > FAIL_WINDOW) m.delete(k);
+  }
+}
+
 export type BanKind = 'bad_sig' | 'replay' | 'bad_ts';
 
 const THRESHOLD: Record<BanKind, number> = {
@@ -57,6 +68,7 @@ export function isBanned(deviceId: string | null, ip: string): boolean {
 export function recordBan(deviceId: string | null, ip: string, kind: BanKind): boolean {
   const now = Date.now() / 1000;
   const map = deviceId ? byDevice : byIp;
+  sweep(map, now);
   const key = deviceId ?? ip;
   const s = stateOf(map, key, now);
   if (s.bannedUntil > now) return false; // 已拉黑，不再计数

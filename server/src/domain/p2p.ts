@@ -7,7 +7,6 @@
  *  - 节点私钥持久化到 P2P_KEY_FILE（Ed25519 hex），peerId 跨重启稳定
  *  - P2P_ENABLED 默认 true（config 默认开启；镜像 ENV 兜底 false，compose 显式注入 true）
  */
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createLibp2p, type Libp2p } from 'libp2p';
@@ -42,7 +41,7 @@ import {
 import { sql } from '../db/index.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../logger.js';
-import { storeSnapshot, stableStringify, snapshotDigest } from './worker.js';
+import { storeSnapshot, snapshotDigest } from './worker.js';
 import { nowStr } from './store.js';
 
 const TOPIC = 'charge-snapshots';
@@ -398,17 +397,27 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
 
 let p2pInstance: P2pHandle | null = null;
 let p2pWhitelistSize = 0;
+/** 白名单为空时的重试定时器（stopP2p 里要清掉，否则停机后仍在拉 GitHub） */
+let whitelistRetryTimer: NodeJS.Timeout | null = null;
 
 /** 收到广播 → 落库（body_sha256 去重）。白名单已在 onSnapshot 层校验。 */
 async function ingestSnapshot(msg: SnapshotMessage): Promise<void> {
   const db = getDb();
-  const dup = await sql<{ id: number }>`
-    SELECT id FROM snapshots WHERE body_sha256 = ${msg.body_sha256} LIMIT 1
-  `.execute(db);
-  if (dup.rows[0]) return; // 已存在（可能是自己广播回来）
+  // 与 storeSnapshot 用同样的 30 分钟去重窗口：不算时间窗的话，夜间 idle==total 这类
+  // 「内容完全相同但时间不同」的正常快照会被永久判重丢弃
+  const cutoff = nowStr(new Date(Date.now() - 1800 * 1000));
   try {
+    const dup = await sql<{ id: number }>`
+      SELECT id FROM snapshots
+       WHERE body_sha256 = ${msg.body_sha256} AND received_at >= ${cutoff}
+       LIMIT 1
+    `.execute(db);
+    if (dup.rows[0]) return; // 已存在（可能是自己广播回来）
     await storeSnapshot(msg.payload, 'p2p', db);
-    logger.info({ sender: msg.sender.slice(0, 16), sha: msg.body_sha256.slice(0, 12) }, '[p2p] 收到并落库快照');
+    logger.info(
+      { sender: msg.sender.slice(0, 16), sha: msg.body_sha256.slice(0, 12) },
+      '[p2p] 收到并落库快照',
+    );
   } catch (e) {
     logger.warn({ err: e }, '[p2p] 快照落库失败');
   }
@@ -427,21 +436,30 @@ export async function initP2p(): Promise<P2pHandle | null> {
     '[p2p] 已启动',
   );
   // 白名单为空 = 所有外部消息都被拒。此时每 5 分钟重试拉取（否则要人工重启才能恢复）
-  if (wl.ids.size === 0) {
-    const timer = setInterval(() => {
+  if (wl.ids.size === 0 && !whitelistRetryTimer) {
+    whitelistRetryTimer = setInterval(() => {
       void loadWhitelist(P2P_WHITELIST_URL, P2P_WHITELIST_CACHE)
         .then((retry) => {
           if (retry.ids.size === 0) return;
           for (const id of retry.ids) wl.ids.add(id);
           p2pWhitelistSize = wl.ids.size;
           logger.info({ whitelist: wl.ids.size }, '[p2p] 白名单重试成功');
-          clearInterval(timer);
+          if (whitelistRetryTimer) {
+            clearInterval(whitelistRetryTimer);
+            whitelistRetryTimer = null;
+          }
+          // bootstrap 只在启动时跑过一次，这里补一次 dial，让已有节点主动连上新节点
+          for (const addr of retry.addrs) {
+            void p2pInstance?.dial(addr).catch(() => {
+              /* 对方可能还没起来，下次心跳/重启再试 */
+            });
+          }
         })
         .catch(() => {
           /* 下个周期继续 */
         });
     }, 5 * 60_000);
-    timer.unref?.();
+    whitelistRetryTimer.unref?.();
   }
   return p2pInstance;
 }
@@ -484,6 +502,10 @@ export function p2pWhitelistCount(): number {
 }
 
 export async function stopP2p(): Promise<void> {
+  if (whitelistRetryTimer) {
+    clearInterval(whitelistRetryTimer);
+    whitelistRetryTimer = null;
+  }
   if (p2pInstance) {
     await p2pInstance.stop();
     p2pInstance = null;

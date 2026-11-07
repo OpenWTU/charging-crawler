@@ -147,33 +147,48 @@ describe('快照上传', () => {
   });
 
   it('重放达阈值后拉黑，后续请求 → 403', async () => {
+    // 用独立设备自造完整流程，不依赖前序用例的注册/nonce 状态（单跑 -t 也能过）
+    const d2 = 'ff00ff00ff00ff00';
+    const s2 = 'cd'.repeat(32);
+    const reg = await postJson('/api/device/register', {}, { device_id: d2, secret: s2 });
+    expect(reg.statusCode).toBe(200);
+
     const bodyObj = { project: 'test', app_version: '0.0.0', areas: [area] };
     const body = JSON.stringify(bodyObj);
-    // replay 阈值是 3（nonce 为全局主键，1 次就拉黑会误伤合法设备）。
-    // 上一个用例已重放 1 次（fails=1），这里再重放 2 次凑满阈值，仍应返回 409。
-    for (let i = 0; i < 2; i += 1) {
-      const sig = deviceSignature(secret, ts(), nonce, Buffer.from(body, 'utf8'));
+    const nonce2 = 'beefbeefbeefbeef';
+    const sig = deviceSignature(s2, ts(), nonce2, Buffer.from(body, 'utf8'));
+    const headers = {
+      'x-charge-timestamp': ts(),
+      'x-charge-nonce': nonce2,
+      'x-charge-signature': sig,
+      'x-device-id': d2,
+    };
+
+    // 首次使用该 nonce：正常落库
+    const first = await postJson('/api/snapshot', headers, bodyObj);
+    expect(first.statusCode).toBe(200);
+
+    // replay 阈值是 3（nonce 为全局主键，1 次就拉黑会误伤合法设备）：重放 3 次都应是 409
+    for (let i = 0; i < 3; i += 1) {
+      const sigR = deviceSignature(s2, ts(), nonce2, Buffer.from(body, 'utf8'));
       const r = await postJson(
         '/api/snapshot',
-        {
-          'x-charge-timestamp': ts(),
-          'x-charge-nonce': nonce,
-          'x-charge-signature': sig,
-          'x-device-id': deviceId,
-        },
+        { ...headers, 'x-charge-timestamp': ts(), 'x-charge-signature': sigR },
         bodyObj,
       );
       expect(r.statusCode).toBe(409);
     }
+
     // 达到阈值后，该设备后续请求全部 403
-    const sig2 = deviceSignature(secret, ts(), 'deadbeefdeadbeef', Buffer.from(body, 'utf8'));
+    const nonce3 = 'deadbeefdeadbeef';
+    const sig3 = deviceSignature(s2, ts(), nonce3, Buffer.from(body, 'utf8'));
     const res = await postJson(
       '/api/snapshot',
       {
         'x-charge-timestamp': ts(),
-        'x-charge-nonce': 'deadbeefdeadbeef',
-        'x-charge-signature': sig2,
-        'x-device-id': deviceId,
+        'x-charge-nonce': nonce3,
+        'x-charge-signature': sig3,
+        'x-device-id': d2,
       },
       bodyObj,
     );

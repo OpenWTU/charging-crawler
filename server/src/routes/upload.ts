@@ -286,11 +286,22 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     const ua = String(req.headers['user-agent'] ?? '');
     const length = body.length;
 
+    // 限流放最前面：否则错误 token 的请求不受限，可无限爆破注册令牌
+    if (!rateOk(ip, 'register', 5, 86400)) {
+      return reply.code(429).send({ ok: false, error: '注册过于频繁' });
+    }
+
     // 注册令牌（REGISTER_TOKEN 未配置时不校验，兼容已装机的旧版 App）
     if (REGISTER_TOKEN) {
       const got = String(req.headers['x-register-token'] ?? '');
       if (got !== REGISTER_TOKEN) {
-        return reply.code(403).send({ ok: false, error: '注册未授权' });
+        return reply.code(403).send({
+          ok: false,
+          code: 'register_token_invalid',
+          // 两种可能：App 版本过旧（不带该头），或服务端 REGISTER_TOKEN 配错。
+          // 不要只说「请更新 App」——配置失误时会把运维问题误导向用户。
+          error: '注册未授权：App 版本过旧或服务端 REGISTER_TOKEN 与服务端不一致',
+        });
       }
     }
 
@@ -310,9 +321,6 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     const secret = String(obj.secret ?? '').trim().toLowerCase();
     if (!/^[0-9a-fA-F-]{8,64}$/.test(did) || !/^[0-9a-f]{64}$/.test(secret)) {
       return reply.code(400).send({ ok: false, error: 'device_id/secret 非法' });
-    }
-    if (!rateOk(ip, 'register', 5, 86400)) {
-      return reply.code(429).send({ ok: false, error: '注册过于频繁' });
     }
 
     let secretEnc: string;

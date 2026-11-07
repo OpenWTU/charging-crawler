@@ -83,6 +83,8 @@ export function useUpdate(deps = {}) {
     const s = typeof raw === 'string' ? parseBridgeJSON(raw) : (raw || null);
     if (!s || !s.ok) {
       if (!silent) showToast('检查更新失败');
+      // 不阻塞刷新链路（模块不变量 3）：失败也要走 maybeAutoRefresh
+      onAfterCheck();
       return;
     }
     if (s.currentName) appVersion.value = String(s.currentName);
@@ -111,10 +113,13 @@ export function useUpdate(deps = {}) {
   function onUpdateError() {
     upChecking.value = false;
     if (!silent) showToast('检查更新失败');
+    // 失败也继续刷新链路（模块不变量 3）
+    onAfterCheck();
   }
 
-  // 自动检查：20 秒内最多触发一次
+  // 自动检查：20 秒内最多触发一次；正在检查时不打断（否则会把手动检查的 silent 改成 true）
   function autoCheck() {
+    if (upChecking.value) return;
     const now = Date.now();
     if (now - lastAutoCheck < 20000) return;
     lastAutoCheck = now;

@@ -200,7 +200,8 @@ function short(id) {
 onMounted(() => {
   load();
   timer = setInterval(() => {
-    if (props.active && !error.value) load();
+    // 不要因 error 停掉轮询：切节点失败会自动回滚到好节点，这里要能自己恢复
+    if (props.active) load();
   }, 30000);
 });
 onUnmounted(() => clearInterval(timer));

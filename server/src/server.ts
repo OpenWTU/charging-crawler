@@ -16,7 +16,7 @@ import { logger } from './logger.js';
 import { closeDb, createDb, getDb, getRaw, ping } from './db/index.js';
 import { migrate } from './db/migrate.js';
 import { startWorker } from './domain/worker.js';
-import { initP2p, stopP2p } from './domain/p2p.js';
+import { initP2p, stopP2p, p2pSelfId } from './domain/p2p.js';
 import { registerPortsRoutes } from './routes/ports.js';
 import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerStateRoutes } from './routes/state.js';
@@ -58,7 +58,9 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
       return reply.code(ok ? 200 : 503).send({
         ok,
         tables,
-        p2p: P2P_ENABLED,
+        // 用运行态而不是配置值：P2P 初始化失败会降级成单节点，配置值仍为 true 会掩盖降级
+        p2p: !!p2pSelfId(),
+        p2p_enabled: P2P_ENABLED,
         ts: new Date().toISOString(),
       });
     } catch (err) {

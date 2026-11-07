@@ -50,19 +50,24 @@ public final class Updater {
     public void check() {
         host.ui().post(() -> {
             host.postJs("window.__onUpdateChecking && window.__onUpdateChecking()");
-            host.checkPool().execute(() -> {
-                try {
-                    Activity a = host.activity();
-                    JSONObject o = Cloud.fetchVersion();
-                    o.put("ok", true);
-                    o.put("currentCode", Cloud.versionCode(a));
-                    o.put("currentName", Cloud.versionName(a));
-                    host.postJs("window.__onUpdateInfo && window.__onUpdateInfo("
-                            + JSONObject.quote(o.toString()) + ")");
-                } catch (Exception e) {
-                    host.postJs("window.__onUpdateError && window.__onUpdateError()");
-                }
-            });
+            try {
+                host.checkPool().execute(() -> {
+                    try {
+                        Activity a = host.activity();
+                        JSONObject o = Cloud.fetchVersion();
+                        o.put("ok", true);
+                        o.put("currentCode", Cloud.versionCode(a));
+                        o.put("currentName", Cloud.versionName(a));
+                        host.postJs("window.__onUpdateInfo && window.__onUpdateInfo("
+                                + JSONObject.quote(o.toString()) + ")");
+                    } catch (Exception e) {
+                        host.postJs("window.__onUpdateError && window.__onUpdateError()");
+                    }
+                });
+            } catch (java.util.concurrent.RejectedExecutionException e) {
+                // Activity 已销毁（线程池 shutdownNow）：前端 upChecking 不能一直停在 true
+                host.postJs("window.__onUpdateError && window.__onUpdateError()");
+            }
         });
     }
 

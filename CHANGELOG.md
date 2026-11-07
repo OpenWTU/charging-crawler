@@ -3,10 +3,73 @@
 本文件格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-> 说明：仓库内代码另有一套历史内部版本号（当前 `2.2.3`），
+> 说明：仓库内代码另有一套历史内部版本号（当前 `2.3.7`），
 > 对外发布使用独立语义化版本与 Git tag。
 
-## [v2.3.x] - 2026-11-07
+## [v2.3.7] - 2026-11-08
+
+第二轮复审（只审上一轮修复本身）后的收尾版本。
+
+### 修复（复审发现）
+- `createDb` 换库时 Kysely 的 `destroy()` 是空操作（`#db` 要到首次查询才赋值）→
+  先 `rawDb.close()` 再 destroy，并补 `.catch()`（否则 reject 成未处理 rejection 会让进程退出）；
+  单例键同时比较路径与 readonly 模式
+- `storeSnapshot` 改为复用 `snapshotDigest`（原来自拼摘要只排除 captured_at，
+  遇到带 received_at/client_ip 的 payload 会与广播摘要分叉）
+- `ingestSnapshot` 去重补 30 分钟时间窗（原无窗口，夜间 idle==total 这类
+  内容相同但时间不同的正常快照会被永久判重丢弃）
+- 白名单重试定时器纳入 `stopP2p` 清理（原来停机后仍每 5 分钟拉 GitHub），
+  重试成功时补一次 `dial` 让已有节点主动连上新节点
+- `/health` 的 `p2p` 改为运行态（`!!p2pSelfId()`），并单列 `p2p_enabled`——
+  原来 P2P 降级后仍报 `p2p:true`，监控看不出降级
+- `REGISTER_TOKEN` 读取时 `.trim()`（配置带空格会导致全员 403）；
+  注册限流前移到令牌校验之前（原错误 token 不受限流，可无限爆破）；
+  403 文案改为同时提示「App 版本过旧或服务端配置不一致」
+- `banlist` 补惰性内存清扫（条目 > 5000 时清过期项，防伪造 IP 撑爆内存）
+- `StateBuilder` 注释修正（`mergeInto` 是服务器值**覆盖**本地，不是只补缺失键）
+- 状态页轮询不再因错误态停止（切节点失败会自动回滚，页面要能自愈）
+- `Updater.check()` 捕获 `RejectedExecutionException`（Activity 销毁后前端 `upChecking`
+  会永久卡住）
+- `useUpdate` 失败分支补 `onAfterCheck()`（原跳过刷新判定）；`autoCheck` 加防重入
+  （原会把正在进行的手动检查的 silent 改成 true，导致「点了没反应」）
+- 404/403 时客户端解析 `error` 字段，不再把原始 JSON 抛给用户
+- 测试：重放拉黑用例改用独立设备自造完整流程（原来依赖前序用例状态，单独跑必失败）
+
+## [v2.3.6] - 2026-11-08
+
+全面代码审查（server / webui / android 逐文件）后的修复版本。
+
+### 安全
+- 设备注册令牌 `REGISTER_TOKEN`（可选）：配置后 `/api/device/register` 必须带
+  `x-register-token` 头，防止任意注册后污染公共数据；**留空则不校验**（兼容旧版 App）
+- P2P 初始化失败不再拖死 HTTP 服务（原会把已 listen 的服务一起 exit，compose 无限重启）
+- `trustProxy` 只信任 Nginx 所在网段（原 `true` 允许客户端伪造 `X-Forwarded-For`
+  绕过全部 IP 限流与自动拉黑）
+
+### 修复（审查发现）
+- 拉黑计数改为按事件类型分开（原三类共用一个计数器，阈值却不同 → 会提前误拉黑合法设备）
+- 快照摘要统一为 `snapshotDigest`（上传用 sha256(原始 body)、P2P 用 sha256(stableStringify)，
+  同一份数据两个摘要 → P2P 去重与窗口去重全部失效、重复落库）
+- 补 `idx_samples_snapshot` 索引（`/api/now` 等按 snapshot_id 查询原是全表扫描，
+  90 天约 65 万行且在同步 SQLite 上阻塞事件循环）
+- `createDb` 同路径复用连接、换路径销毁旧连接（原反复初始化泄漏连接）
+- 服务端抓取的快照 `token_user` 恒为空（`uid` 变量从未赋值）
+- P2P 事件回调未捕获的 rejection 会让 Node 24 直接退出进程
+- 白名单拉取失败后每 5 分钟重试（原永久拒绝所有外部消息，需人工重启）
+- `NODE_ENV` 默认改为 production（原 development 会在 --prod 镜像里找 pino-pretty 而启动崩溃）
+- 心跳广播 `NODE_P2P_ADDR`（原为死配置）
+- 端口数据被拒时记日志并返回具体原因（原静默 400）
+
+### App
+- 自动检查更新抛 `ReferenceError`（`SEEN_KEY` 被误删）→ 更新弹窗永不出现
+- 「同一版本只提醒一次」改为 12 小时过期 + 手动检查始终弹窗
+- App 桥路径透传 `server_online`（原离线降级会在 60 秒轮询后被反写成在线）
+- 手动切换节点加 http(s) 校验 + 切换后 `/health` 探测，不通自动回滚（原切到坏节点无法自救）
+- GitHub 检查更新超时缩短到 4 秒，快速回退服务器
+
+## [v2.3.3] - 2026-11-07
+
+### P2P 多节点
 
 ### P2P 多节点
 - 节点目录 `nodes.json` 合并原 `peers.json`（peerId 白名单 + App 目录单一真相源）

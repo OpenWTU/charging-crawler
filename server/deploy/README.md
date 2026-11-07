@@ -16,6 +16,18 @@ NODE_NAME=我的节点 NODE_URL=https://我的域名 NODE_P2P_ADDR=/ip4/1.2.3.4/
   bash install.sh
 ```
 
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `NODE_NAME` | 主机名 | 节点显示名（状态页卡片） |
+| `NODE_URL` | 空 | 节点 HTTP 地址（App 切换节点用；留空则该卡片不可点） |
+| `NODE_P2P_ADDR` | 空 | 公网 P2P 地址（`/ip4/<公网IP>/tcp/4001`），随心跳广播给其他节点 |
+| `DATA_DIR` | `/var/lib/charge-cloud` | SQLite 与令牌密钥所在目录 |
+| `TRUST_PROXY` | 见下 | **前面有 Nginx 时设 `true`**：只信任本机/docker 网段转发的 `X-Forwarded-For`。不设时用 socket 真实地址（更安全；但前面有代理时会把所有请求当同一 IP，限流互相影响）。**默认值**：仓库根的 `docker-compose.yml`（主节点，配了 Nginx）默认 `true`；`docker-compose.node.yml`（单节点模板）默认 `false` |
+| `REGISTER_TOKEN` | 空 | 设备注册令牌。**留空 = 不校验**；配置后 `POST /api/device/register` 必须带同名 `x-register-token` 头（新版 App 已内置），用于阻止任何人不经 App 注册设备后污染公共数据 |
+
+> **启用 `REGISTER_TOKEN` 的顺序**：① 先让客户端升级到内置该头的新版 App；
+> ② 再设变量重启。否则旧版 App 的新设备注册会 403（已注册设备不受影响）。
+
 跑完后：
 - 服务：`http://<ip>:8791`，状态页 `/status`
 - 自动更新：`systemctl list-timers charge-node-update.timer`（每天 03:00）

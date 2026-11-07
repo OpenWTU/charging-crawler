@@ -22,7 +22,7 @@ export type Db = Kysely<Database>;
 
 let instance: Db | null = null;
 let rawDb: NodeSqliteDatabase | null = null;
-let instancePath: string | null = null;
+let instanceKey: string | null = null;
 
 /**
  * 创建一个 Kysely 实例。
@@ -30,16 +30,25 @@ let instancePath: string | null = null;
  * 迁 PostgreSQL 时把这里的 SqliteDialect 换成 PostgresDialect（配合 pg 的 Pool），
  * 其余代码（含所有 query）无需改动 —— 这就是选 Kysely 的原因。
  *
- * 同路径复用已有连接（避免反复初始化泄漏）；换路径时先销毁旧连接。
+ * 同路径（同 readonly 模式）复用已有连接；换库时先真正关掉旧连接。
+ *
+ * 注意：Kysely 的 `destroy()` 只关它内部的 `#db`，而 `#db` 要到**首次查询**触发
+ * `init()` 时才赋值——「建了库但没查过就换库」时 destroy 是空操作。所以这里先直接
+ * `rawDb.close()`，再 destroy（忽略重复关闭的拒绝，避免未处理 rejection 让进程退出）。
  */
 export function createDb(filePath = DATABASE_PATH, readonly = DATABASE_READONLY): Db {
-  if (instance && instancePath === filePath) return instance;
+  const key = `${filePath}:${readonly ? 'ro' : 'rw'}`;
+  if (instance && instanceKey === key) return instance;
   if (instance) {
     try {
-      void instance.destroy();
+      rawDb?.close();
     } catch {
-      /* 旧连接销毁失败不影响新连接 */
+      /* 可能已被 Kysely 关掉 */
     }
+    // 必须 catch：destroy 若 reject，未处理的 rejection 会让 Node 24 退出进程
+    void instance.destroy().catch(() => {
+      /* 上面 rawDb.close() 已处理 */
+    });
     instance = null;
     rawDb = null;
   }
@@ -66,7 +75,7 @@ export function createDb(filePath = DATABASE_PATH, readonly = DATABASE_READONLY)
     // 适配层提供了 Kysely SqliteDriver 所需的 prepare/reader/all/run/iterate/close
     dialect: new SqliteDialect({ database: db as never }),
   });
-  instancePath = filePath;
+  instanceKey = key;
   logger.info({ file: filePath, readonly }, '[db] 已连接');
   return instance;
 }

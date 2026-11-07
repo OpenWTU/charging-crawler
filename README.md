@@ -70,6 +70,14 @@ NODE_NAME=我的节点 NODE_URL=https://我的域名 NODE_P2P_ADDR=/ip4/1.2.3.4/
 镜像：`ghcr.io/openwtu/charging-crawler:latest`（CI 推 `v*` tag 自动构建）。
 自动更新：每天 03:00 拉最新镜像，`/health` 检查失败自动回退旧镜像（日志 `/var/log/charge-update.log`）。
 
+可选环境变量：
+
+| 变量 | 说明 |
+|---|---|
+| `TRUST_PROXY` | 前面有 Nginx 时设 `true`（只信任本机/docker 网段转发的 `X-Forwarded-For`，防伪造绕过限流）|
+| `REGISTER_TOKEN` | 设备注册令牌。**留空 = 不校验**；配置后 `POST /api/device/register` 必须带同名 `x-register-token` 头（新版 App 已内置），用于阻止任意注册 |
+| `NODE_NAME` / `NODE_URL` / `NODE_P2P_ADDR` | 节点名称 / HTTP 地址 / 公网 P2P 地址（状态页卡片与节点互连用）|
+
 ## 功能
 
 - **App**：实时列表、按楼栋推荐、分析页（热力图/趋势/排行/同期参考）、**历史页**（单区曲线/作息规律/采样明细）、令牌页（VPN 抓包/手动粘贴）、设置、刷新进度、**离线降级**（连不上服务器时隐藏分析/历史页签）、**节点发现**（GitHub 目录 + mDNS）。
@@ -143,7 +151,7 @@ App 上传 → 节点 A 落库 → gossipsub 广播（topic "charge-snapshots"�
 cd webui && pnpm install && pnpm run build   # 输出到 webui/dist
 
 # APK（本机，需 Android SDK/JDK + release keystore）
-CHARGE_VERSION_CODE=2003001 CHARGE_VERSION_NAME=2.3.1 python android/build.py
+CHARGE_VERSION_CODE=2003007 CHARGE_VERSION_NAME=2.3.7 python android/build.py
 
 # Docker 镜像（本地验证）
 docker compose build
@@ -165,7 +173,7 @@ docker compose build
 
 ## 版本与测试
 
-- App：`2.3.1`（versionCode 2003001）
+- App：`2.3.7`（versionCode 2003007）
 - Node 后端测试：`cd server && pnpm test`（53 项，含密码学对拍、端点边界、P2P 两节点互传、worker mock）
 - 只读接口曾与 Python 版 24/24 对拍一致（Python 版已删除，见 git 历史）
 - 签名：release keystore 保持仓库外，SHA256 见 `/api/version`

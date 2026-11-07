@@ -76,12 +76,8 @@ export async function storeSnapshot(
   const cutoff = nowStr(new Date(Date.now() - 1800 * 1000));
   const { valid } = await splitValidAreas(payload.areas as CleanArea[], db);
   if (!valid.length) throw new Error('没有可用区域');
-  const stable: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(payload)) if (k !== 'captured_at') stable[k] = v;
-  stable.areas = valid;
-  const digest = createHash('sha256')
-    .update(stableStringify(stable), 'utf8')
-    .digest('hex');
+  // 必须与 P2P 广播、上传落库共用同一个摘要函数，否则三处各算一套 → 去重失效
+  const digest = snapshotDigest({ ...payload, areas: valid });
   const dup = await sql<{ id: number }>`
     SELECT id FROM snapshots WHERE body_sha256 = ${digest} AND received_at >= ${cutoff}
     ORDER BY id DESC LIMIT 1

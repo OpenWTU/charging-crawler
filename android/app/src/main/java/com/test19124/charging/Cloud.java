@@ -171,6 +171,18 @@ public final class Cloud {
             if (code == 409) {
                 return conflictReason(text);
             }
+            if (code == 403) {
+                // 服务端启用了 REGISTER_TOKEN 而本机没带（或值被换过）：
+                // 直接给出可执行的提示，不要把原始 JSON 抛给用户
+                String msg = "服务端要求注册令牌，请更新 App 后重试";
+                try {
+                    String e = new JSONObject(text).optString("error", "");
+                    if (!e.isEmpty()) msg = e;
+                } catch (Exception ignored) {
+                    // 非 JSON 响应：用上面的通用文案
+                }
+                throw new IOException(msg);
+            }
             if (code != 200) {
                 throw new IOException("设备注册失败: " + text);
             }
