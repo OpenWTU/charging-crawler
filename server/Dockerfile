@@ -7,7 +7,8 @@ WORKDIR /app
 
 # 先只拷依赖清单，最大化利用层缓存
 # 注意：node:24 已弃用 corepack，直接 npm 装固定版本 pnpm（lockfile 是 9.0）
-COPY server/package.json server/pnpm-lock.yaml ./
+# pnpm-workspace.yaml 带 onlyBuiltDependencies（esbuild），pnpm 10+ 起从 package.json 迁移到此处
+COPY server/package.json server/pnpm-lock.yaml server/pnpm-workspace.yaml ./
 RUN npm install -g pnpm@9 && pnpm install --frozen-lockfile=false
 
 # 拷源码并编译
