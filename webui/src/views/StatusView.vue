@@ -67,7 +67,7 @@
           <div><dt>当前节点名称</dt><dd>{{ data.peers?.self_name || short(data.peers?.self) }}</dd></div>
           <div><dt>当前节点 peerId</dt><dd class="mono">{{ short(data.peers?.self) }}</dd></div>
           <div><dt>白名单节点</dt><dd>{{ data.peers?.whitelist ?? 0 }}</dd></div>
-          <div><dt>在线节点</dt><dd>{{ data.peers?.online ?? 0 }}</dd></div>
+          <div><dt>在线节点（含本机）</dt><dd>{{ data.peers?.online_total ?? ((data.peers?.online ?? 0) + 1) }}</dd></div>
         </dl>
         <div v-if="(data.peers?.nodes || []).length" class="peer-list">
           <div
@@ -114,7 +114,7 @@ v-for="n in data.peers.nodes" :key="n.peer_id" class="peer-card"
  * 网页端直接 fetch，App 内走 AndroidHost.getStatus 桥（api/status.js 已封装）。
  */
 import { onMounted, onUnmounted, ref } from 'vue';
-import { showConfirmDialog } from 'vant';
+import { showConfirmDialog, showToast } from 'vant';
 import { getStatus, switchNode } from '../api/status.js';
 import { friendlyErrorText } from '../api/transport.js';
 
@@ -151,7 +151,10 @@ function askSwitch(n) {
     cancelButtonText: '取消',
   }).then(() => {
     const ok = switchNode(n.url);
-    if (!ok) {
+    if (ok) {
+      showToast('已切换到「' + (n.name || short(n.peer_id)) + '」，刷新数据后生效');
+      setTimeout(() => load(), 800);
+    } else {
       showConfirmDialog({ title: '提示', message: '当前版本不支持手动切换，请更新 App', confirmButtonText: '知道了' });
     }
   }).catch(() => {});

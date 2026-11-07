@@ -86,6 +86,8 @@ export async function registerStatusRoutes(app: FastifyInstance): Promise<void> 
         self_name: p2pSelfName(),
         self_addrs: p2pSelfAddrs(),
         online: p2pPeers().length,
+        // 含本机的在线节点数（P2P 启用时 +1，前端据此表述「含本机」）
+        online_total: p2pPeers().length + (p2pSelfId() ? 1 : 0),
         whitelist: p2pWhitelistCount(),
         nodes: p2pPeers(),
       },
