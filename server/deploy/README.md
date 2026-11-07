@@ -1,23 +1,47 @@
 # server/deploy —— Node 版部署
 
-## Docker 快速部署（2026-11-06 新增，推荐）
+## 一条命令部署（推荐，含自动更新）
+
+```bash
+curl -fsSL -H "Accept: application/vnd.github.raw" \
+  "https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/deploy/install.sh" | bash
+```
+
+它自动完成：装 Docker → 拉镜像 → 起容器 → **装凌晨 3 点自动更新 timer（失败自动回退）**。
+
+可选环境变量（不填就用默认）：
+
+```bash
+NODE_NAME=我的节点 NODE_URL=https://我的域名 NODE_P2P_ADDR=/ip4/1.2.3.4/tcp/4001 \
+  bash install.sh
+```
+
+跑完后：
+- 服务：`http://<ip>:8791`，状态页 `/status`
+- 自动更新：`systemctl list-timers charge-node-update.timer`（每天 03:00）
+- 更新日志：`/var/log/charge-update.log`
+
+## 手动部署（分步）
 
 镜像仓库：`ghcr.io/openwtu/charging-crawler`（CI 推 `v*` tag 自动构建）。
 
 ```bash
-# 1. 装 Docker（Ubuntu）
+# 1. 装 Docker（Ubuntu/Debian）
 curl -fsSL https://get.docker.com | sh
 
-# 2. 拉部署文件（docker-compose.yml + update-node.sh + timer）
+# 2. 拉部署文件
 mkdir -p /opt/charge-node
-# 把仓库根 docker-compose.yml 和 server/deploy/update-node.sh 放进去
+curl -fsSL -H "Accept: application/vnd.github.raw" \
+  "https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/deploy/docker-compose.node.yml" \
+  -o /opt/charge-node/docker-compose.yml
+curl -fsSL -H "Accept: application/vnd.github.raw" \
+  "https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/deploy/update-node.sh" \
+  -o /opt/charge-node/update-node.sh && chmod +x /opt/charge-node/update-node.sh
 
-# 3. 复用现有数据（SQLite/token_key 已在 /var/lib/charge-cloud）
-DATA_DIR=/var/lib/charge-cloud docker compose pull
-DATA_DIR=/var/lib/charge-cloud docker compose up -d
+# 3. 起服务
+DATA_DIR=/var/lib/charge-cloud NODE_NAME=我的节点 docker compose up -d
 
-# 4. 验证
-curl http://127.0.0.1:8791/health
+# 4. 装自动更新 timer（复制 install.sh 的 6/6 段即可）
 ```
 
 ## ⚠️ 时区（重要）
