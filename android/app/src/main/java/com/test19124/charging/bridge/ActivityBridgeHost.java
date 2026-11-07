@@ -14,6 +14,7 @@ import com.test19124.charging.state.OverviewCache;
 import com.test19124.charging.state.SecureState;
 import com.test19124.charging.state.StateBuilder;
 import com.test19124.charging.ui.LogDialog;
+import com.test19124.charging.ui.StatusBarTheme;
 
 /**
  * {@link BridgeHost} 的装配实现：把 JS 桥调用分派到各子模块。
@@ -103,6 +104,16 @@ public final class ActivityBridgeHost implements BridgeHost {
         env.ui().post(() -> {
             if (!env.isGone()) {
                 LogDialog.show(env.activity());
+            }
+        });
+    }
+
+    @Override
+    public void setDarkMode(boolean dark) {
+        // 改窗口状态栏必须在 UI 线程；页面卸载后忽略迟到的主题回调
+        env.ui().post(() -> {
+            if (!env.isGone()) {
+                StatusBarTheme.apply(env.activity().getWindow(), dark);
             }
         });
     }

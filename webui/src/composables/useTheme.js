@@ -4,10 +4,11 @@
  * 不变量：
  *  - 网页端跟随系统深浅色；App 内用本地设置（localStorage: charge_theme）；
  *  - 深色同时挂 <html>.theme-dark（弹层/body 也变深），并由 design.css 的 body 变量驱动；
- *  - 主题变化后 <meta name="theme-color"> 内的浏览器配色随之同步。
+ *  - 主题变化后 <meta name="theme-color"> 内的浏览器配色随之同步；
+ *    App 内再经 JS 桥通知原生同步系统状态栏（WebView 不认 theme-color）。
  */
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
-import { isApp } from '../api/index.js';
+import { isApp, setDarkMode } from '../api/index.js';
 
 const THEME_KEY = 'charge_theme';
 
@@ -87,6 +88,8 @@ export function useTheme(onChange) {
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute('content', dark ? '#0f172a' : '#047857');
     } catch { /* ignore */ }
+    // App 内让系统状态栏跟随页面底色（网页端空操作；旧 APK 无该桥时静默跳过）
+    setDarkMode(dark);
     // 主题切换后按新配色重绘图表（图表尚未初始化时是空操作）
     nextTick(() => { if (typeof onChange === 'function') onChange(); });
   }, { immediate: true });

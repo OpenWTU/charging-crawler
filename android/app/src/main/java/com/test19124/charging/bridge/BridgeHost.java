@@ -32,6 +32,9 @@ public interface BridgeHost {
     /** 打开抓包日志弹窗，内部切 UI 线程。 */
     void showLog();
 
+    /** 网页主题切换：状态栏底色/图标明暗跟随，内部切 UI 线程。 */
+    void setDarkMode(boolean dark);
+
     /** 「令牌」页设置载荷 JSON。 */
     String settingsJson();
 
