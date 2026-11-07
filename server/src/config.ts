@@ -159,3 +159,16 @@ export const AUTO_WORKER = envBool('AUTO_WORKER', true);
 
 /** 后端版本（CI 构建时注入 tag；本地开发默认 dev） */
 export const SERVER_VERSION = env('SERVER_VERSION', 'dev');
+
+/* ---------------- 设备注册 ---------------- */
+
+/**
+ * 设备注册令牌（可选）。
+ *
+ * 配置后 POST /api/device/register 必须带 `x-register-token` 头且值相等，
+ * 否则 403——防止任何人随手注册设备后污染公共数据。
+ *
+ * **留空表示不校验**（默认）：这样已经装机的旧版 App（不带该头）仍能注册。
+ * 等新版 App 普及后再设该变量即可，无需改代码。
+ */
+export const REGISTER_TOKEN = env('REGISTER_TOKEN', '');

@@ -34,6 +34,7 @@ import { isBanned, recordBan } from '../domain/banlist.js';
 import { rateOk } from '../domain/ratelimit.js';
 import { broadcastSnapshot } from '../domain/p2p.js';
 import { snapshotDigest } from '../domain/worker.js';
+import { REGISTER_TOKEN } from '../config.js';
 import { logger } from '../logger.js';
 
 /** 常量时间比较 hex 字符串（Python 用 hmac.compare_digest） */
@@ -284,6 +285,14 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     const ip = req.ip;
     const ua = String(req.headers['user-agent'] ?? '');
     const length = body.length;
+
+    // 注册令牌（REGISTER_TOKEN 未配置时不校验，兼容已装机的旧版 App）
+    if (REGISTER_TOKEN) {
+      const got = String(req.headers['x-register-token'] ?? '');
+      if (got !== REGISTER_TOKEN) {
+        return reply.code(403).send({ ok: false, error: '注册未授权' });
+      }
+    }
 
     if (length <= 0 || length > 4096) {
       return reply.code(400).send({ ok: false, error: '请求体大小非法' });

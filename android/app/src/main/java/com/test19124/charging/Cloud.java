@@ -29,6 +29,12 @@ public final class Cloud {
     public static final String BASE = "https://charge.lizishuo.cn/";
     private static final String UA = "ChargingPileApp";
 
+    /**
+     * 设备注册令牌：与服务端 REGISTER_TOKEN 保持一致。
+     * 服务端未配置该变量时不校验；配置后只有带此头的客户端能注册新设备。
+     */
+    private static final String REGISTER_TOKEN = "chg-reg-7f3a9c21e5d84b06";
+
     private Cloud() {
     }
 
@@ -154,6 +160,8 @@ public final class Cloud {
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("User-Agent", userAgent(ctx));
+        // 设备注册令牌：与服务端 REGISTER_TOKEN 一致；服务端未配置时该头被忽略
+        conn.setRequestProperty("x-register-token", REGISTER_TOKEN);
         try {
             try (OutputStream out = conn.getOutputStream()) {
                 out.write(raw);
