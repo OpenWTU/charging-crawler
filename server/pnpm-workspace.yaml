@@ -1,5 +1,0 @@
-# pnpm 配置（pnpm 11 起从 package.json 的 pnpm 字段搬迁到此）
-# esbuild 是 vitest 的依赖，需要允许它的 postinstall 安装平台二进制；
-# 不批准时 pnpm install 会以 ERR_PNPM_IGNORED_BUILDS 退出（CI/本地都一样）。
-onlyBuiltDependencies:
-  - esbuild
