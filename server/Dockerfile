@@ -39,8 +39,8 @@ COPY --from=builder /app/migrations ./migrations
 # 与后端同 tag 发布，节点间不会前端版本不一致。
 COPY webui/dist /web
 
-# P2P 白名单默认值随镜像发布（GitHub raw 在国内服务器常被 TLS 阻断，不能运行时依赖拉取）
-COPY server/p2p/peers.json /app/default-peers.json
+# 节点目录 + peerId 白名单默认值随镜像发布（GitHub contents 拉不到时兜底）
+COPY server/p2p/nodes.json /app/default-peers.json
 
 # 非 root 运行
 RUN mkdir -p /data /apk \

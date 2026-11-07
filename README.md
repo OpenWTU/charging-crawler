@@ -44,7 +44,7 @@ server/                  Node/TypeScript 后端（核心，生产运行）
   scripts/               跨语言对拍（parity / crypto / sign）
   test/                  53 项（vitest）
   Dockerfile / deploy/   镜像构建 + 部署 + 更新脚本 + 对拍
-  p2p/                   nodes.json（App 节点目录）+ peers.json（peerId 白名单）
+  p2p/                   nodes.json（节点目录 + peerId 白名单，App 与服务器共用）
 
 webui/                   Vue 3 + Vant 4 + ECharts，Vite 多入口（index/admin/app）
 android/                 WebView + JS 桥 App，build.py 离线构建（aapt2/javac/d8/apksigner）
@@ -119,7 +119,7 @@ curl http://127.0.0.1:8791/health
 - token：AES-256-GCM 加密存储，仅用于 worker 代为抓取；App「上传令牌」开关默认开，关闭后不上传。
 - 设备注册：自动审批（无人工审核），secret 用 AES-GCM 加密落库。
 - 只读接口：IP 限流。
-- **P2P**：节点身份用 peerId 白名单（权威源 `server/p2p/peers.json`，走 PR 审计）；节点私钥留在服务器本地，绝不进仓库。
+- **P2P**：节点身份用 peerId 白名单（权威源 `server/p2p/nodes.json`，App 节点目录与白名单合并成一份，走 PR 审计）；节点私钥留在服务器本地，绝不进仓库。
 
 ## P2P 去中心化共享
 
@@ -131,7 +131,7 @@ App 上传 → 节点 A 落库 → gossipsub 广播（topic "charge-snapshots"�
 ```
 
 - 默认 `P2P_ENABLED=true`（单节点也启动，白名单空时拒绝所有外部消息，安全）。
-- 加节点：部署新节点 → 把它的 HTTP 地址写进 `server/p2p/nodes.json`（App 目录）、peerId 写进 `server/p2p/peers.json`（白名单）→ PR 合入 main → 发版（镜像带新白名单）。
+- 加节点：部署新节点 → 在 `server/p2p/nodes.json` 里加一条（peerId / name / url / p2p 地址）→ PR 合入 main → 发版。所有节点与 App 自动生效（服务器据此鉴权+互连，App 据此发现+切换）。
 - App 端节点发现：启动时从 GitHub contents API 拉 `nodes.json`，逐个 `/health` 探测选第一个通的；mDNS 发现局域网节点；全失败回退内置 `charge.lizishuo.cn`。
 - 状态页节点卡片：显示节点名称（NODE_NAME）/版本/数据统计，可点击手动切换连接节点。
 

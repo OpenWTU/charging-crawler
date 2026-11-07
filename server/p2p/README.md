@@ -3,7 +3,7 @@
 本文件是 peerId 白名单的**权威源**，节点启动时从 GitHub raw 拉取：
 
 ```
-https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/p2p/peers.json
+https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/p2p/nodes.json
 ```
 
 ## 怎么加节点

@@ -131,19 +131,34 @@ export async function loadWhitelist(
     const ids = new Set<string>();
     const addrs: string[] = [];
     try {
-      const data = JSON.parse(text) as { peers?: unknown };
-      const list = Array.isArray(data.peers) ? data.peers : [];
-      for (const item of list) {
-        if (typeof item === 'string') {
-          // 旧格式：纯 peerId
-          if (item) ids.add(item);
-        } else if (item && typeof item === 'object') {
+      const data = JSON.parse(text) as Record<string, unknown>;
+      // 新格式（nodes.json，与 App 目录合并）：{ nodes: [{ peerId, name, url, p2p }] }
+      const nodes = Array.isArray(data.nodes) ? data.nodes : null;
+      if (nodes) {
+        for (const item of nodes) {
+          if (!item || typeof item !== 'object') continue;
           const rec = item as Record<string, unknown>;
-          const id = String(rec.id ?? '').trim();
-          const addr = String(rec.addr ?? '').trim();
+          const id = String(rec.peerId ?? rec.id ?? '').trim();
+          const p2pAddr = String(rec.p2p ?? rec.addr ?? '').trim();
           if (id) ids.add(id);
-          if (id && addr) {
-            addrs.push(addr.includes('/p2p/') ? addr : `${addr}/p2p/${id}`);
+          if (id && p2pAddr) {
+            addrs.push(p2pAddr.includes('/p2p/') ? p2pAddr : `${p2pAddr}/p2p/${id}`);
+          }
+        }
+      } else {
+        // 兼容旧格式：{ peers: [...] }
+        const list = Array.isArray(data.peers) ? data.peers : [];
+        for (const item of list) {
+          if (typeof item === 'string') {
+            if (item) ids.add(item);
+          } else if (item && typeof item === 'object') {
+            const rec = item as Record<string, unknown>;
+            const id = String(rec.id ?? '').trim();
+            const addr = String(rec.addr ?? '').trim();
+            if (id) ids.add(id);
+            if (id && addr) {
+              addrs.push(addr.includes('/p2p/') ? addr : `${addr}/p2p/${id}`);
+            }
           }
         }
       }

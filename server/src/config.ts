@@ -133,12 +133,12 @@ export const NODE_URL = env('NODE_URL', '');
 /** 本节点公网 P2P 地址（如 /ip4/1.2.3.4/tcp/4001），心跳广播给其他节点用于互连 */
 export const NODE_P2P_ADDR = env('NODE_P2P_ADDR', '');
 /**
- * peerId 白名单权威源。用 GitHub contents API（api.github.com 不被 SNI 阻断，
- * raw.githubusercontent.com 在国内常被 TLS 阻断）。
+ * 节点目录 + peerId 白名单（同一份文件，App 与服务器共用）。
+ * 用 GitHub contents API（api.github.com 不被 SNI 阻断）。
  */
 export const P2P_WHITELIST_URL = env(
   'P2P_WHITELIST_URL',
-  'https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/p2p/peers.json',
+  'https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/p2p/nodes.json',
 );
 /** 白名单本地缓存（离线时兜底） */
 export const P2P_WHITELIST_CACHE = env(
