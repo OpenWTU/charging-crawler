@@ -22,14 +22,27 @@ export type Db = Kysely<Database>;
 
 let instance: Db | null = null;
 let rawDb: NodeSqliteDatabase | null = null;
+let instancePath: string | null = null;
 
 /**
  * 创建一个 Kysely 实例。
  *
  * 迁 PostgreSQL 时把这里的 SqliteDialect 换成 PostgresDialect（配合 pg 的 Pool），
  * 其余代码（含所有 query）无需改动 —— 这就是选 Kysely 的原因。
+ *
+ * 同路径复用已有连接（避免反复初始化泄漏）；换路径时先销毁旧连接。
  */
 export function createDb(filePath = DATABASE_PATH, readonly = DATABASE_READONLY): Db {
+  if (instance && instancePath === filePath) return instance;
+  if (instance) {
+    try {
+      void instance.destroy();
+    } catch {
+      /* 旧连接销毁失败不影响新连接 */
+    }
+    instance = null;
+    rawDb = null;
+  }
   if (!readonly) fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
   const db = new NodeSqliteDatabase(filePath, { readonly });
@@ -53,6 +66,7 @@ export function createDb(filePath = DATABASE_PATH, readonly = DATABASE_READONLY)
     // 适配层提供了 Kysely SqliteDriver 所需的 prepare/reader/all/run/iterate/close
     dialect: new SqliteDialect({ database: db as never }),
   });
+  instancePath = filePath;
   logger.info({ file: filePath, readonly }, '[db] 已连接');
   return instance;
 }

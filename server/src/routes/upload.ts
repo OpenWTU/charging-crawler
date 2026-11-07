@@ -10,7 +10,6 @@
  * handler 里自己 JSON.parse。
  */
 import { timingSafeEqual } from 'node:crypto';
-import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import { getDb } from '../db/index.js';
@@ -34,6 +33,7 @@ import { parseToken, poolUpsert } from '../domain/tokens.js';
 import { isBanned, recordBan } from '../domain/banlist.js';
 import { rateOk } from '../domain/ratelimit.js';
 import { broadcastSnapshot } from '../domain/p2p.js';
+import { snapshotDigest } from '../domain/worker.js';
 import { logger } from '../logger.js';
 
 /** 常量时间比较 hex 字符串（Python 用 hmac.compare_digest） */
@@ -148,7 +148,11 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     try {
       cleanPortsResult = cleanPorts(rawPorts, knownDevices);
     } catch (e) {
-      return reply.code(400).send({ ok: false, error: '端口数据非法' });
+      // 别把原因吞掉：controllers 为空（新节点冷启动/换库恢复）时所有带 ports 的上传都会走到这里
+      logger.warn({ err: e, ip }, '[upload] 端口数据被拒');
+      return reply
+        .code(400)
+        .send({ ok: false, error: `端口数据非法：${e instanceof Error ? e.message : String(e)}` });
     }
 
     // nonce 落库（重放 → 409 + 拉黑）
@@ -178,7 +182,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
             client_ip: String(req.socket.remoteAddress ?? ''),
             device_id: deviceId || null,
             real_ip: ip,
-            body_sha256: createHash('sha256').update(body).digest('hex'),
+            body_sha256: snapshotDigest(payload as unknown as Record<string, unknown>),
             payload: JSON.stringify(payload),
           })
           .executeTakeFirst();

@@ -12,14 +12,17 @@ import { checkUpdate, startUpdate } from '../api/index.js';
 import { parseBridgeJSON } from '../api/transport.js';
 
 /** 已提示过的版本记录，格式 "versionCode:timestamp"（兼容旧版纯数字） */
+const SEEN_KEY = 'charge_update_seen';
 const SEEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 小时后允许再次自动提示
 
 function readSeen() {
-  const raw = String(localStorage.getItem(SEEN_KEY) || '');
-  const [codeStr, tsStr] = raw.split(':');
-  const code = Number(codeStr) || 0;
-  const ts = Number(tsStr) || 0;
-  return { code, ts };
+  try {
+    const raw = String(localStorage.getItem(SEEN_KEY) || '');
+    const [codeStr, tsStr] = raw.split(':');
+    return { code: Number(codeStr) || 0, ts: Number(tsStr) || 0 };
+  } catch {
+    return { code: 0, ts: 0 };
+  }
 }
 
 function writeSeen(code) {

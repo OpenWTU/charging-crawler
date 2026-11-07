@@ -41,6 +41,9 @@ export async function getOverview() {
             interval: numOrNull(d.interval),
             error_count: numOrNull(d.error_count),
             token_pool: isObj(d.token_pool) ? d.token_pool : null,
+            // App 桥明确告知的服务器连通性（飞行模式/服务器不可达时为 false），
+            // 缺这个键会让 useLiveData 把 serverOnline 恒判为 true，离线降级失效
+            server_online: typeof d.server_online === 'boolean' ? d.server_online : null,
             snapshot: {
               captured_at: d.data_updated_at || '',
               areas: Array.isArray(d.areas) ? d.areas : [],

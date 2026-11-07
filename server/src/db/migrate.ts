@@ -180,6 +180,11 @@ export function applySchemaPatches(conn: MigrateConn): void {
   conn.exec(
     'CREATE INDEX IF NOT EXISTS idx_samples_area_id ON area_samples(area_id, snapshot_id)',
   );
+  // /api/now、/api/history、prediction 都按 snapshot_id 过滤/排序；
+  // 已有复合索引前缀是 area_name/area_id，snapshot_id 单列查询会全表扫描
+  conn.exec(
+    'CREATE INDEX IF NOT EXISTS idx_samples_snapshot ON area_samples(snapshot_id)',
+  );
   if (tables.has('port_states')) {
     conn.exec(
       'CREATE INDEX IF NOT EXISTS idx_port_states_group '

@@ -137,8 +137,10 @@ export function useLiveData(notify) {
       // 健康条字段与列表同源，但解析失败也只清空健康条，不触发列表错误态
       try { health.value = readHealth(d); } catch { health.value = null; }
       // App 模式用原生给的 server_online（WebView 自己探不到服务器）；
-      // Web 模式能走到这里就说明请求成功，直接视为在线
-      updateServerOnline(typeof d.server_online === 'boolean' ? d.server_online : true);
+      // Web 模式能走到这里就说明请求成功，直接视为在线。
+      // App 桥没给该字段时保持现状，不要硬写 true（否则会把刚才的离线降级反写回去）
+      if (typeof d.server_online === 'boolean') updateServerOnline(d.server_online);
+      else if (!isApp) updateServerOnline(true);
       loadError.value = '';
       loaded.value = true;
       loadTokenState();

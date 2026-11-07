@@ -152,7 +152,7 @@ function askSwitch(n) {
   }).then(() => {
     const ok = switchNode(n.url);
     if (ok) {
-      showToast('已切换到「' + (n.name || short(n.peer_id)) + '」，刷新数据后生效');
+      showToast('已切换到「' + (n.name || short(n.peer_id)) + '」，若连不上会自动回退');
       setTimeout(() => load(), 800);
     } else {
       showConfirmDialog({ title: '提示', message: '当前版本不支持手动切换，请更新 App', confirmButtonText: '知道了' });

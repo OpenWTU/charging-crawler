@@ -36,7 +36,7 @@ export const HOST = env('HOST', '127.0.0.1');
 /** 默认 8791：刻意避开 Python 版的 8788，便于双跑对拍 */
 export const PORT = envInt('PORT', 8791);
 export const LOG_LEVEL = env('LOG_LEVEL', 'info');
-export const NODE_ENV = env('NODE_ENV', 'development');
+export const NODE_ENV = env('NODE_ENV', 'production');
 
 /* ---------------- 数据库 ---------------- */
 

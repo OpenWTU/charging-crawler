@@ -146,20 +146,37 @@ describe('快照上传', () => {
     expect(res.statusCode).toBe(409);
   });
 
-  it('重放拉黑后，后续请求 → 403', async () => {
+  it('重放达阈值后拉黑，后续请求 → 403', async () => {
     const bodyObj = { project: 'test', app_version: '0.0.0', areas: [area] };
     const body = JSON.stringify(bodyObj);
-    const sig = deviceSignature(secret, ts(), 'cafebabecafebabe', Buffer.from(body, 'utf8'));
+    // replay 阈值是 3（nonce 为全局主键，1 次就拉黑会误伤合法设备）。
+    // 上一个用例已重放 1 次（fails=1），这里再重放 2 次凑满阈值，仍应返回 409。
+    for (let i = 0; i < 2; i += 1) {
+      const sig = deviceSignature(secret, ts(), nonce, Buffer.from(body, 'utf8'));
+      const r = await postJson(
+        '/api/snapshot',
+        {
+          'x-charge-timestamp': ts(),
+          'x-charge-nonce': nonce,
+          'x-charge-signature': sig,
+          'x-device-id': deviceId,
+        },
+        bodyObj,
+      );
+      expect(r.statusCode).toBe(409);
+    }
+    // 达到阈值后，该设备后续请求全部 403
+    const sig2 = deviceSignature(secret, ts(), 'deadbeefdeadbeef', Buffer.from(body, 'utf8'));
     const res = await postJson(
       '/api/snapshot',
       {
         'x-charge-timestamp': ts(),
-        'x-charge-nonce': 'cafebabecafebabe',
-        'x-charge-signature': sig,
+        'x-charge-nonce': 'deadbeefdeadbeef',
+        'x-charge-signature': sig2,
         'x-device-id': deviceId,
       },
       bodyObj,
     );
-    expect(res.statusCode).toBe(403); // 重放拉黑后全部拒绝
+    expect(res.statusCode).toBe(403); // 重放达阈值后拉黑，全部拒绝
   });
 });

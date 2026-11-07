@@ -30,7 +30,10 @@ export type App = FastifyInstance;
 export async function buildServer(opts: FastifyServerOptions = {}): Promise<App> {
   const app = Fastify({
     loggerInstance: logger,
-    trustProxy: true, // Nginx 反代：用 X-Forwarded-For / X-Real-IP
+    // 只信任 Nginx 所在网段转发的 X-Forwarded-For（容器看到的是 docker 网关地址）。
+    // 用 `true` 会信任客户端任意伪造的 XFF，直接绕过 IP 限流与自动拉黑；
+    // 生产需显式 TRUST_PROXY=true 才开启（配合 Nginx 反代）。
+    trustProxy: process.env.TRUST_PROXY === 'true' ? '127.0.0.1,172.16.0.0/12' : false,
     bodyLimit: 8 * 1024 * 1024,
     ...opts,
   });
@@ -114,8 +117,13 @@ async function main(): Promise<void> {
     app.log.info('[worker] 只读模式，不启动');
   }
 
-  // P2P（默认关闭；P2P_ENABLED=true 时启动，白名单从 GitHub raw 拉取）
-  await initP2p();
+  // P2P（默认开启；P2P_ENABLED=false 时跳过）
+  // 注意：P2P 初始化失败绝不能让整站退出——HTTP 已经在 listen，降级成单节点继续服务
+  try {
+    await initP2p();
+  } catch (err) {
+    app.log.error({ err }, '[p2p] 初始化失败，服务继续以单节点模式运行');
+  }
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, '收到退出信号，正在关闭');

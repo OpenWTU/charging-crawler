@@ -3,13 +3,17 @@
  *
  * 规则（内存态，重启清零；P7 公开状态页可查看）：
  *  - bad_sig 验签失败：5 次 / 10 分钟 → 拉黑 1 小时
- *  - replay   nonce 重放：1 次即拉黑 1 小时（重放是明确攻击）
+ *  - replay   nonce 重放：3 次 / 10 分钟 → 拉黑 1 小时（阈值不能是 1：
+ *             nonce 是全局主键，两台设备随机撞车或客户端重发都会命中，会误伤合法设备）
  *  - bad_ts   时间戳过期：10 次 / 10 分钟 → 拉黑 1 小时
+ *
+ * 计数按 kind 分开统计（共用一个计数器会让 bad_sig 与 replay 互相累加，提前误拉黑）。
  *
  * 拉黑维度：优先按 device_id（若有），否则按 IP。
  */
 interface BanState {
-  fails: number;
+  /** 按事件类型分开计数（窗口内） */
+  kinds: Partial<Record<BanKind, number>>;
   windowStart: number;
   bannedUntil: number;
 }
@@ -24,14 +28,16 @@ export type BanKind = 'bad_sig' | 'replay' | 'bad_ts';
 
 const THRESHOLD: Record<BanKind, number> = {
   bad_sig: 5,
-  replay: 1,
+  // nonce 是全局主键（未按 device 分区），两台设备随机撞车或客户端重发都会命中，
+  // 阈值 1 会误伤合法设备（拉黑 1 小时），放宽到 3 次
+  replay: 3,
   bad_ts: 10,
 };
 
 function stateOf(m: Map<string, BanState>, key: string, now: number): BanState {
   let s = m.get(key);
   if (!s) {
-    s = { fails: 0, windowStart: now, bannedUntil: 0 };
+    s = { kinds: {}, windowStart: now, bannedUntil: 0 };
     m.set(key, s);
   }
   return s;
@@ -55,11 +61,12 @@ export function recordBan(deviceId: string | null, ip: string, kind: BanKind): b
   const s = stateOf(map, key, now);
   if (s.bannedUntil > now) return false; // 已拉黑，不再计数
   if (now - s.windowStart > FAIL_WINDOW) {
-    s.fails = 0;
+    s.kinds = {};
     s.windowStart = now;
   }
-  s.fails += 1;
-  if (s.fails >= THRESHOLD[kind]) {
+  const n = (s.kinds[kind] ?? 0) + 1;
+  s.kinds[kind] = n;
+  if (n >= THRESHOLD[kind]) {
     s.bannedUntil = now + BAN_SECONDS;
     return true;
   }

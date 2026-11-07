@@ -5,7 +5,7 @@
  *  - topic "charge-snapshots"，广播快照 payload（JSON），body_sha256 幂等去重
  *  - peerId 白名单：消息来源必须命中白名单（权威源 GitHub raw，本地缓存兜底）
  *  - 节点私钥持久化到 P2P_KEY_FILE（Ed25519 hex），peerId 跨重启稳定
- *  - 默认 P2P_ENABLED=false 不启动，单节点不受影响
+ *  - P2P_ENABLED 默认 true（config 默认开启；镜像 ENV 兜底 false，compose 显式注入 true）
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -27,6 +27,7 @@ import {
 import type { PubSub, Message } from '@libp2p/interface';
 import {
   NODE_NAME,
+  NODE_P2P_ADDR,
   NODE_URL,
   P2P_BOOTSTRAP,
   P2P_ENABLED,
@@ -41,7 +42,7 @@ import {
 import { sql } from '../db/index.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../logger.js';
-import { storeSnapshot, stableStringify } from './worker.js';
+import { storeSnapshot, stableStringify, snapshotDigest } from './worker.js';
 import { nowStr } from './store.js';
 
 const TOPIC = 'charge-snapshots';
@@ -62,6 +63,8 @@ export interface StatusMessage {
   name: string;
   version: string;
   url: string;
+  /** 本节点公网 P2P 地址（NODE_P2P_ADDR），供已连接节点在重连/迁移时使用 */
+  p2p?: string;
   ts: string;
   stats: { snapshots: number; areas: number; devices: number; ports: number };
 }
@@ -276,6 +279,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
       name: selfName,
       version: SERVER_VERSION,
       url: NODE_URL,
+      p2p: NODE_P2P_ADDR || undefined,
       ts: nowStr(),
       stats: await selfStats(),
     };
@@ -330,7 +334,10 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
           last_seen: msg.ts,
           stats: prev?.stats ?? null,
         });
-        void cb(msg);
+        // 回调异常必须就地捕获：事件回调里丢弃的 Promise rejection 会让 Node 24 直接退出进程
+        void Promise.resolve(cb(msg)).catch((e: unknown) => {
+          logger.warn({ err: e }, '[p2p] onSnapshot 回调异常');
+        });
       });
 
       // 状态心跳：更新节点元数据（名称/版本/统计）
@@ -419,15 +426,31 @@ export async function initP2p(): Promise<P2pHandle | null> {
     { peerId: p2pInstance.peerId, whitelist: wl.ids.size, autoAddrs: wl.addrs.length },
     '[p2p] 已启动',
   );
+  // 白名单为空 = 所有外部消息都被拒。此时每 5 分钟重试拉取（否则要人工重启才能恢复）
+  if (wl.ids.size === 0) {
+    const timer = setInterval(() => {
+      void loadWhitelist(P2P_WHITELIST_URL, P2P_WHITELIST_CACHE)
+        .then((retry) => {
+          if (retry.ids.size === 0) return;
+          for (const id of retry.ids) wl.ids.add(id);
+          p2pWhitelistSize = wl.ids.size;
+          logger.info({ whitelist: wl.ids.size }, '[p2p] 白名单重试成功');
+          clearInterval(timer);
+        })
+        .catch(() => {
+          /* 下个周期继续 */
+        });
+    }, 5 * 60_000);
+    timer.unref?.();
+  }
   return p2pInstance;
 }
 
 /** 广播一个快照（上传/worker 落库后调用）；返回 body_sha256 供日志 */
 export async function broadcastSnapshot(payload: Record<string, unknown>): Promise<string> {
   if (!p2pInstance) return '';
-  const stable: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(payload)) if (k !== 'captured_at') stable[k] = v;
-  const digest = createHash('sha256').update(stableStringify(stable), 'utf8').digest('hex');
+  // 与上传落库共用 snapshotDigest，保证同一份数据在两端摘要一致（否则去重失效）
+  const digest = snapshotDigest(payload);
   try {
     await p2pInstance.broadcast({ ts: nowStr(), body_sha256: digest, payload });
     return digest;

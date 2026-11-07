@@ -186,12 +186,31 @@ public final class NodeDiscovery {
         DebugLog.add("节点切换: " + b);
     }
 
-    /** 手动切换节点（状态页卡片点击后由桥调用）；空地址忽略 */
+    /**
+     * 手动切换节点（状态页卡片点击后由桥调用）。
+     *
+     * <p>安全约束：
+     * <ul>
+     *   <li>只接受 http(s) 绝对地址，拒绝空串/相对路径/其他 scheme；</li>
+     *   <li>切换后异步 /health 探测，不通则回滚到上一个节点——
+     *       否则用户切到坏节点后「状态」页签会被隐藏，再也点不到卡片切回去（只能重启）。</li>
+     * </ul>
+     */
     public static synchronized void switchToNode(String url) {
         String b = url == null ? "" : url.trim();
-        if (!b.isEmpty()) {
-            switchTo(b);
-        }
+        if (b.isEmpty()) return;
+        if (!b.startsWith("https://") && !b.startsWith("http://")) return;
+        String normalized = b.endsWith("/") ? b.substring(0, b.length() - 1) : b;
+        if (normalized.equals(currentBase)) return;
+
+        final String prev = currentBase;
+        switchTo(normalized);
+        new Thread(() -> {
+            if (!healthy(normalized) && normalized.equals(currentBase)) {
+                switchTo(prev);
+                DebugLog.add("节点切换失败，已回滚: " + normalized);
+            }
+        }, "node-switch-probe").start();
     }
 
     private static SharedPreferences prefs() {

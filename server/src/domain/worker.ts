@@ -52,6 +52,20 @@ export function stableStringify(obj: unknown): string {
   return JSON.stringify(obj);
 }
 
+/**
+ * 快照去重摘要（上传落库与 P2P 广播必须用同一个函数，否则同一份数据两个摘要 → 重复落库）。
+ *
+ * 排除 captured_at（采集时刻由客户端给，重传时可能微调）与接收端字段。
+ */
+export function snapshotDigest(payload: Record<string, unknown>): string {
+  const stable: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(payload)) {
+    if (k === 'captured_at' || k === 'received_at' || k === 'client_ip') continue;
+    stable[k] = v;
+  }
+  return createHash('sha256').update(stableStringify(stable), 'utf8').digest('hex');
+}
+
 /* ---------------- 快照落库（cloud/snapshots.py::store_snapshot） ---------------- */
 
 export async function storeSnapshot(
@@ -162,6 +176,8 @@ export async function serverRefreshOnce(
         continue;
       }
       project = String(data.projectName ?? '');
+      // 记录本次抓取所用的令牌属主（快照的 token_user 字段），原来漏赋值导致恒为空
+      uid = String(cand.uid ?? '');
       const near = await callImpl(
         'nearArea/list',
         { projectId: String(projectId) },
