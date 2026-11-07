@@ -16,7 +16,7 @@ export interface TokenPoolStats {
   long_lived: number;
 }
 
-/** 池健康：总数 / 有效数 / 最早到期（覆盖到何时）/ 长寿命数 */
+/** 池健康：总数 / 有效数 / 最早到期 / 覆盖到何时 / 长寿命数 */
 export async function tokenPoolStats(): Promise<TokenPoolStats> {
   const db = getDb();
   const res = await sql<{ expires_at: number | null }>`SELECT expires_at FROM token_pool`.execute(db);
@@ -24,12 +24,14 @@ export async function tokenPoolStats(): Promise<TokenPoolStats> {
   const exps = res.rows.map((r) => Number(r.expires_at ?? 0));
   const valid = exps.filter((e) => e > nowTs);
   const earliest = valid.length ? Math.min(...valid) : null;
+  const latest = valid.length ? Math.max(...valid) : null;
   return {
     count: exps.length,
     valid: valid.length,
+    // 最早到期：最小 expires_at（用于「快过期」提醒）
     earliest_exp: earliest,
-    // cover_until 与 earliest_exp 同值：有效 token 最早到期即数据最多覆盖到何时
-    cover_until: earliest,
+    // 覆盖到：最晚到期（只要还有一个有效 token 就能继续抓取，数据覆盖到最后一个过期）
+    cover_until: latest,
     long_lived: valid.filter((e) => e - nowTs > TOKEN_LONG_LIVED_SECONDS).length,
   };
 }
