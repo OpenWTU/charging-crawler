@@ -45,7 +45,7 @@
           <div><dt>有效 / 总数</dt><dd>{{ data.token_pool?.valid ?? 0 }} / {{ data.token_pool?.count ?? 0 }}<span v-if="(data.token_pool?.valid ?? 0) === 0 && (data.token_pool?.count ?? 0) > 0" class="expired-tag">全部已过期</span></dd></div>
           <div><dt>最早过期</dt><dd>{{ fmtEpoch(data.token_pool?.earliest_exp) }}</dd></div>
           <div><dt>覆盖到</dt><dd>{{ fmtEpoch(data.token_pool?.cover_until) }}</dd></div>
-          <div><dt>长效令牌</dt><dd>{{ data.token_pool?.long_lived ?? 0 }} 个</dd></div>
+          <div><dt>长效令牌</dt><dd>{{ fmtLongLived(data.token_pool?.long_lived) }}</dd></div>
         </dl>
       </section>
 
@@ -143,7 +143,10 @@ async function load() {
 
 /** 点击节点卡片：弹窗确认切换 */
 function askSwitch(n) {
-  if (!n.url) return;
+  if (!n.url) {
+    showToast('该节点没有配置地址，无法切换');
+    return;
+  }
   showConfirmDialog({
     title: '切换连接节点',
     message: `切换到「${n.name || short(n.peer_id)}」（${n.url}）？`,
@@ -153,7 +156,8 @@ function askSwitch(n) {
     const ok = switchNode(n.url);
     if (ok) {
       showToast('已切换到「' + (n.name || short(n.peer_id)) + '」，若连不上会自动回退');
-      setTimeout(() => load(), 800);
+      // 探测最长约 6 秒（3s 连接 + 3s 读取），等它出结果再刷新；太短会拿到坏节点的失败结果
+      setTimeout(() => load(), 4000);
     } else {
       showConfirmDialog({ title: '提示', message: '当前版本不支持手动切换，请更新 App', confirmButtonText: '知道了' });
     }
@@ -189,6 +193,14 @@ function fmtV(v) {
   if (!v) return '—';
   const s = String(v);
   return s.startsWith('v') ? s : 'v' + s;
+}
+
+/** 长效令牌：后端可能给布尔（旧）或数字（新），两种都显示成可读文案 */
+function fmtLongLived(v) {
+  if (v === true) return '是';
+  if (v === false) return '否';
+  const n = Number(v);
+  return Number.isFinite(n) ? `${n} 个` : '—';
 }
 
 function short(id) {

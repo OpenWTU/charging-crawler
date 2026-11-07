@@ -44,7 +44,14 @@ export async function registerStatusRoutes(app: FastifyInstance): Promise<void> 
     const counts = rows.rows[0];
     let dbSize = 0;
     try {
-      dbSize = fs.statSync(DATABASE_PATH).size;
+      // WAL 模式下数据可能还在 -wal 文件里，只 stat 主库会严重低估
+      for (const f of [DATABASE_PATH, `${DATABASE_PATH}-wal`, `${DATABASE_PATH}-shm`]) {
+        try {
+          dbSize += fs.statSync(f).size;
+        } catch {
+          /* 文件可能不存在（未启用 WAL / 已 checkpoint） */
+        }
+      }
     } catch {
       dbSize = 0;
     }

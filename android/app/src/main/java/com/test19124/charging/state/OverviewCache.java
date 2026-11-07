@@ -26,14 +26,28 @@ public final class OverviewCache {
     }
 
     private static final long FETCH_THROTTLE_MS = 30000;
-    private static final long MERGE_TTL_MS = 120000;
+    /**
+     * 缓存可合并进 getState 的最长年龄。应略大于 FETCH_THROTTLE_MS：
+     * 太长的话服务器掉线后健康条会继续显示最多 2 分钟的旧令牌状态。
+     */
+    private static final long MERGE_TTL_MS = 40000;
     /** 最近一次成功拉取的「在线有效期」：超过即视为服务器不可达 */
     private static final long ONLINE_TTL_MS = 120000;
 
     private final Host host;
 
-    private volatile String cache = null;
-    private volatile long cacheAt = 0;
+    /** 不可变缓存快照：json 与时间戳一起发布、一起读取，避免「新 json + 旧时间」的竞态 */
+    private static final class Snapshot {
+        final String json;
+        final long at;
+
+        Snapshot(String json, long at) {
+            this.json = json;
+            this.at = at;
+        }
+    }
+
+    private volatile Snapshot snapshot = null;
     private volatile boolean loading = false;
     /** 是否已经尝试过至少一次拉取（没试过时乐观认为在线，避免首屏闪离线态） */
     private volatile boolean everFetched = false;
@@ -50,7 +64,8 @@ public final class OverviewCache {
             return;
         }
         long now = System.currentTimeMillis();
-        if (cache != null && now - cacheAt < FETCH_THROTTLE_MS) {
+        Snapshot cur = snapshot;
+        if (cur != null && now - cur.at < FETCH_THROTTLE_MS) {
             return;
         }
         if (loading) {
@@ -60,9 +75,9 @@ public final class OverviewCache {
         host.overviewPool().execute(() -> {
             try {
                 String json = Cloud.fetchOverview().toString();
-                cache = json;
-                cacheAt = System.currentTimeMillis();
-                lastOkAt = cacheAt;
+                long at = System.currentTimeMillis();
+                snapshot = new Snapshot(json, at);
+                lastOkAt = at;
                 everFetched = true;
                 host.postJs("window.__onOverview && window.__onOverview("
                         + JSONObject.quote(json) + ")");
@@ -95,7 +110,8 @@ public final class OverviewCache {
 
     /** 缓存原文；从未成功拉取时返回 null（桥据此回 "{}"）。 */
     public String cachedOrNull() {
-        return cache;
+        Snapshot s = snapshot;
+        return s == null ? null : s.json;
     }
 
     /**
@@ -106,19 +122,18 @@ public final class OverviewCache {
      * 拉取成功后 {@code maybeFetch} 会 post {@code window.__onOverview} 通知前端。</p>
      */
     public void invalidateAndRefetch() {
-        cache = null;
-        cacheAt = 0;
+        snapshot = null;
         maybeFetch();
     }
 
     /** 把 /api/overview 的健康/令牌池字段合并进 getState（前端现有 getOverview 直接读取）。 */
     public void mergeInto(JSONObject root) {
-        String cached = cache;
-        if (cached == null || System.currentTimeMillis() - cacheAt > MERGE_TTL_MS) {
+        Snapshot s = snapshot; // 一次读取，json 与时间戳保证配套
+        if (s == null || System.currentTimeMillis() - s.at > MERGE_TTL_MS) {
             return;
         }
         try {
-            JSONObject o = new JSONObject(cached);
+            JSONObject o = new JSONObject(s.json);
             // 服务器数据是权威：token_pool/token_ready/earliest_exp 等一律覆盖本地值，
             // 否则本地 token 的过期时间会被误显示成「服务器令牌覆盖到」。
             for (String key : new String[]{"uploads", "received_at", "generated_at",

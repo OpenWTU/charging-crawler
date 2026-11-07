@@ -103,7 +103,7 @@ v-model:show="showUpdate" :up="up" :app-version="appVersion"
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { showToast } from 'vant';
-import { getSettings, isApp } from './api/index.js';
+import { isApp } from './api/index.js';
 import HomeView from './views/HomeView.vue';
 import AnalyticsView from './views/AnalyticsView.vue';
 import StatusView from './views/StatusView.vue';
@@ -124,7 +124,6 @@ import { validGeo, toGcj, writeGeoCache } from './geo.js';
 const TAB = Object.freeze({
   LIVE: 'live', ANALYTICS: 'analytics', STATUS: 'status', TOKEN: 'token', SETTINGS: 'settings',
 });
-const uploadTokenOn = ref(true);
 const tab = ref(TAB.LIVE);
 const homeRef = ref(null);
 
@@ -146,9 +145,10 @@ const tabItems = computed(() => {
 });
 const tabNames = computed(() => tabItems.value.map((item) => item.name));
 
-// 上传令牌开关：只影响上传行为，不再控制页签显隐（页签由连通性决定）
-function onUploadTokenChange(v) {
-  uploadTokenOn.value = !!v;
+// 上传令牌开关：只影响「是否把令牌传给服务器」，不再控制页签显隐（页签由连通性决定）。
+// 开关本身的读写都在 Settings 内部完成，这里不需要保留状态副本。
+function onUploadTokenChange() {
+  /* 保留监听以免模板告警；App 层不再需要该状态 */
 }
 
 // ---- 主题 / 数据 / 刷新 / 更新 ----
@@ -336,7 +336,6 @@ onMounted(() => {
   watchSystem();
 
   if (!isApp) return;
-  try { uploadTokenOn.value = getSettings().upload_token !== false; } catch { /* ignore */ }
   bridge.scheduleAutoCheck(2600, autoCheck);
 });
 

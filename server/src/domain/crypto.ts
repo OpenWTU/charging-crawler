@@ -12,6 +12,7 @@
  */
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import { TOKEN_KEY_FILE } from '../config.js';
 
 /** 读取 token 主密钥（32 字节 hex）；缺失且 STRICT 时报错，否则自动生成 */
@@ -19,16 +20,20 @@ export function tokenKey(): Buffer {
   if (fs.existsSync(TOKEN_KEY_FILE)) {
     const raw = fs.readFileSync(TOKEN_KEY_FILE, 'ascii').trim();
     const key = Buffer.from(raw, 'hex');
-    if (key.length !== 32) throw new Error(`token key 长度不是 32 字节: ${TOKEN_KEY_FILE}`);
+    if (key.length !== 32) {
+      throw new Error(
+        `token key 非法: ${TOKEN_KEY_FILE} 需要 64 位 hex（32 字节），实际 ${raw.length} 字符`,
+      );
+    }
     return key;
   }
   if (process.env.CHARGE_TOKEN_KEY_STRICT === '1') {
     throw new Error(`token key 缺失: ${TOKEN_KEY_FILE}（生产环境禁止自动重建）`);
   }
   const key = randomBytes(32);
-  const sep = TOKEN_KEY_FILE.includes('/') ? '/' : '\\';
-  const dir = TOKEN_KEY_FILE.slice(0, TOKEN_KEY_FILE.lastIndexOf(sep));
-  fs.mkdirSync(dir, { recursive: true });
+  // 用 path.dirname：文件名不含分隔符时 slice(0, -1) 会把目录算错
+  const dir = path.dirname(TOKEN_KEY_FILE);
+  if (dir && dir !== '.') fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(TOKEN_KEY_FILE, key.toString('hex'), { encoding: 'ascii', mode: 0o600 });
   return key;
 }

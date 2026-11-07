@@ -166,7 +166,9 @@ public final class ActivityBridgeHost implements BridgeHost {
     @Override
     public void navAmap(String name, double lat, double lng, double slat, double slon) {
         // startActivity/Toast 必须在 UI 线程
-        env.ui().post(() -> location.navAmap(name, lat, lng, slat, slon));
+        env.ui().post(() -> {
+            if (!env.isGone()) location.navAmap(name, lat, lng, slat, slon);
+        });
     }
 
     @Override

@@ -32,6 +32,8 @@ public final class StatusBarTheme {
             return;
         }
         // 底色：深色页面用深色状态栏，浅色页面用页面底色（不再沿用系统主题的浅灰）。
+        // 注意：targetSdk 升到 35（强制 edge-to-edge）后 setStatusBarColor 会变成 no-op，
+        // 届时需要改成 WindowCompat.setDecorFitsSystemWindows(false) + 状态栏透明。
         window.setStatusBarColor(dark ? DARK : LIGHT);
         // 图标明暗：深色底配浅色图标，浅色底配深色图标。
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

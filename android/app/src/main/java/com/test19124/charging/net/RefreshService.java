@@ -379,6 +379,8 @@ public final class RefreshService {
 
     private void postProgress(String p) {
         refreshProgress = p;
-        host.postJs("window.__onRefreshProgress && window.__onRefreshProgress('" + p + "')");
+        // 用 JSONObject.quote 转义：文案里出现 ' 或 \ 会让整条 evaluateJavascript 语法错误
+        host.postJs("window.__onRefreshProgress && window.__onRefreshProgress("
+                + org.json.JSONObject.quote(p) + ")");
     }
 }

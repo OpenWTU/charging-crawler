@@ -102,9 +102,17 @@ export interface P2pOptions {
 /** 读取或生成 Ed25519 私钥（protobuf hex 持久化） */
 export async function loadOrCreateKey(keyFile: string): Promise<Uint8Array> {
   const dir = path.dirname(keyFile);
-  if (dir) fs.mkdirSync(dir, { recursive: true });
+  if (dir && dir !== '.') fs.mkdirSync(dir, { recursive: true });
   if (fs.existsSync(keyFile)) {
     const hex = fs.readFileSync(keyFile, 'ascii').trim();
+    // 校验内容：截断/空文件会让 privateKeyFromProtobuf 抛错并触发整站降级，
+    // 这里提前给出可诊断的错误（绝不静默覆盖——覆盖会丢 peerId）
+    if (hex.length < 60 || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) {
+      throw new Error(
+        `节点私钥文件损坏: ${keyFile}（${hex.length} 字符，应为偶数长度 hex；`
+          + '请从备份恢复，或删掉它让节点以新身份重新加入白名单）',
+      );
+    }
     return new Uint8Array(Buffer.from(hex, 'hex'));
   }
   const key = await generateKeyPair('Ed25519');
@@ -248,7 +256,14 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
   const selfName = NODE_NAME || selfId.slice(0, 8);
 
   // 记录最近收到消息的节点元数据（名称/版本/活跃/统计，用于 /status 节点卡片）
-  const peerMeta = new Map<string, { name: string; version: string; url: string; last_seen: string; stats: StatusMessage['stats'] | null }>();
+  const peerMeta = new Map<string, {
+  name: string;
+  version: string;
+  url: string;
+  addr: string;
+  last_seen: string;
+  stats: StatusMessage['stats'] | null;
+}>();
 
   /** 本机数据统计（心跳附带） */
   async function selfStats(): Promise<StatusMessage['stats']> {
@@ -295,7 +310,11 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
 
   const handle: P2pHandle = {
     peerId: selfId,
-    addresses: node.getMultiaddrs().map((a) => a.toString()),
+    // 优先用显式配置的公网地址（NODE_P2P_ADDR）；否则回退到 libp2p 监听到的地址
+    // （注意容器内多为 172.x/127.0.0.1，对外不可达，所以生产应显式配 NODE_P2P_ADDR）
+    addresses: NODE_P2P_ADDR
+      ? [`${NODE_P2P_ADDR}/p2p/${selfId}`]
+      : node.getMultiaddrs().map((a) => a.toString()),
 
     async broadcast(msg) {
       const full: SnapshotMessage = {
@@ -330,6 +349,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
           name: prev?.name ?? fromId.slice(0, 8),
           version: msg.sender_version ?? prev?.version ?? 'unknown',
           url: prev?.url ?? '',
+          addr: prev?.addr ?? '',
           last_seen: msg.ts,
           stats: prev?.stats ?? null,
         });
@@ -358,6 +378,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
           name: msg.name || fromId.slice(0, 8),
           version: msg.version || 'unknown',
           url: msg.url || '',
+          addr: msg.p2p || '',
           last_seen: msg.ts,
           stats: msg.stats ?? null,
         });
@@ -369,7 +390,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
         const meta = peerMeta.get(p.toString());
         return {
           peer_id: p.toString(),
-          addr: null,
+          addr: meta?.addr || null,
           connected: true,
           name: meta?.name ?? null,
           version: meta?.version ?? null,

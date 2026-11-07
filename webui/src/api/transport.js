@@ -144,17 +144,23 @@ export function callBridgeJSON(cbKey, invoke, timeoutMs) {
     bridgeSeqs[cbKey] = seq;
     let done = false;
     const timer = setTimeout(() => finish(false, new Error('bridge timeout')), timeoutMs);
+    let handler = null;
     function finish(ok, value) {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      // 只清理自己装的那个 handler：并发调同一 cbKey 时别人可能已替换，删了会让对方收不到回调
+      if (handler && window[cbKey] === handler) {
+        try { delete window[cbKey]; } catch { /* ignore */ }
+      }
       if (ok) resolve(value); else reject(value);
     }
-    window[cbKey] = (raw) => {
+    handler = (raw) => {
       if (bridgeSeqs[cbKey] !== seq) return;
       const d = parseBridgeJSON(raw);
       if (d) finish(true, d); else finish(false, new Error('bridge parse failed'));
     };
+    window[cbKey] = handler;
     try {
       const ret = invoke();
       // 兼容 JS 桥返回 Promise 的实现（Android Java 桥是同步字符串，不会走到这里）

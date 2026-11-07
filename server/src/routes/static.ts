@@ -59,8 +59,10 @@ export async function registerStaticRoutes(app: FastifyInstance): Promise<void> 
   /* ---------------- /api/version ---------------- */
   app.get('/api/version', async (_req, reply) => {
     try {
-      const raw = await fs.readFile(VERSION_FILE);
-      return reply.type('application/json; charset=utf-8').send(raw);
+      const raw = await fs.readFile(VERSION_FILE, 'utf8');
+      // 去掉 UTF-8 BOM：App 侧 new JSONObject(text) 遇到 BOM 会解析失败，
+      // 表现是「检查更新一直失败」而服务器看着一切正常
+      return reply.type('application/json; charset=utf-8').send(raw.replace(/^\uFEFF/, ''));
     } catch {
       return reply.code(404).send({ ok: false, error: 'version.json 未配置' });
     }

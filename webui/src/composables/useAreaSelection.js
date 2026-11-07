@@ -429,7 +429,11 @@ export function useAreaSelection(src) {
 
   // 统计条：空闲 / 充电中 / 故障 三数汇总（无数据时由 statText 显示占位）
   const sum = computed(() => areas.value.reduce((s, a) => {
-    s.idle += a.idle_port; s.charging += a.charging_port; s.fault += a.fault_port; return s;
+    // Number 兜底：概览缺字段时避免 NaN 把统计条整行吃掉
+    s.idle += Number(a.idle_port) || 0;
+    s.charging += Number(a.charging_port) || 0;
+    s.fault += Number(a.fault_port) || 0;
+    return s;
   }, { idle: 0, charging: 0, fault: 0 }));
 
   function statText(v) {

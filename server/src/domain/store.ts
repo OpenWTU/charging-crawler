@@ -10,6 +10,7 @@ import { getDb, type Db } from '../db/index.js';
 import type { Database } from '../db/types.js';
 import { PORT_RE, PORT_STATUS_MAX } from '../config.js';
 import { statusGroup, type PortGroup } from './port-status.js';
+import { logger } from '../logger.js';
 
 export const MAX_PORTS_PER_DEVICE = 32;
 export const MAX_PORT_ITEMS = 500;
@@ -108,6 +109,21 @@ export async function splitValidAreas(
 ): Promise<SplitResult> {
   const knownRes = await sql<{ name: string }>`SELECT name FROM areas`.execute(db);
   const known = new Set(knownRes.rows.map((r) => String(r.name)));
+
+  // 首次上传（areas 表为空）会接受任意区名来建立 known 集合——这是初始化必需，
+  // 但必须限制单次数量，否则一次请求就能灌进成千上万伪造区名污染公共库
+  const MAX_FIRST_UPLOAD_AREAS = 200;
+  if (known.size === 0 && areas.length > MAX_FIRST_UPLOAD_AREAS) {
+    logger.warn(
+      { count: areas.length, limit: MAX_FIRST_UPLOAD_AREAS },
+      '[store] 首次上传区域数超限，整批拒绝',
+    );
+    return {
+      valid: [],
+      skipped: [[`*${areas.length}`, `首次上传区域数超过 ${MAX_FIRST_UPLOAD_AREAS}`]],
+      duplicate: false,
+    };
+  }
 
   const valid: CleanArea[] = [];
   const skipped: Array<[string, string]> = [];

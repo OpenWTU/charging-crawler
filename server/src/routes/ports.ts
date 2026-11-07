@@ -294,8 +294,9 @@ export async function registerPortsRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/pile/*', async (req, reply) => {
+    // Fastify 已对路径参数解码，这里不能再 decodeURIComponent（二次解码会把编码过的 % 吃掉）
     const raw = (req.params as Record<string, string>)['*'] ?? '';
-    const payload = await pilePayload(decodeURIComponent(raw));
+    const payload = await pilePayload(raw);
     if ('status' in payload && payload.ok === false) {
       return reply.code(payload.status).send({ ok: false, error: payload.error });
     }

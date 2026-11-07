@@ -371,6 +371,8 @@ public class MainActivity extends Activity
         if (requestCode == LocationBridge.REQ_LOCATION) {
             location.onPermissionResult();
         } else {
+            // 目前只有定位与抓包两个来源；将来新增 requestCode 时务必在这里显式分支，
+            // 否则会被 capture 误当成抓包结果处理
             capture.onRequestPermissionsResult(requestCode, grantResults);
         }
     }

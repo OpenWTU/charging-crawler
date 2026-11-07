@@ -26,7 +26,9 @@ export async function getAnalytics() {
     if (host && typeof host.getAnalytics === 'function') {
       const seq = ++analyticsSeq;
       const r = await awaitGlobalBridge('__onAnalytics', () => host.getAnalytics(), 20000);
-      if (seq !== analyticsSeq) return { samples: 0 };
+      // 序号过期说明有更新的一次请求在飞，这里返回 null 让调用方忽略，
+      // 不能用空数据覆盖已有结果（会让分析页闪成「暂无数据」）
+      if (seq !== analyticsSeq) return null;
       if (!r.threw && typeof r.raw === 'string') {
         try { return JSON.parse(r.raw); } catch { return { samples: 0 }; }
       }

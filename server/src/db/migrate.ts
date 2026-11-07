@@ -16,6 +16,7 @@ import path from 'node:path';
 import { SERVER_ROOT } from '../config.js';
 import { logger } from '../logger.js';
 import { PORT_STATUS_GROUPS, type PortGroup } from '../domain/port-status.js';
+import { nowStr } from '../domain/store.js';
 
 const MIGRATION_DIR = path.join(SERVER_ROOT, 'migrations', 'sqlite');
 
@@ -249,7 +250,7 @@ export function migrate(conn: MigrateConn, opts: { dryRun?: boolean } = {}): Mig
       conn.exec(sqlText);
       conn
         .prepare('INSERT INTO schema_migrations(name, applied_at) VALUES (?, ?)')
-        .run([file, new Date().toISOString()]);
+        .run([file, nowStr()]);
     });
     logger.info({ file }, '[migrate] 已执行');
     applied.push(file);

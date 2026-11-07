@@ -333,8 +333,16 @@ export async function syncPortsImpl(
       const stamp = nowStr();
       try {
         await db.transaction().execute(async (trx) => {
-          const marks = sql.join(ports.map((p) => p.port));
-          await sql`DELETE FROM port_states WHERE device_hex = ${dev.device_hex} AND port NOT IN (${marks})`.execute(trx);
+          // 只在「本次拿到的端口数 >= 库里该设备已有的端口数」时才清理多余端口：
+          // 上游有时只返回部分端口，无条件 NOT IN 删除会把有效端口删掉
+          const cur = await sql<{ n: number }>`
+            SELECT COUNT(*) AS n FROM port_states WHERE device_hex = ${dev.device_hex}
+          `.execute(trx);
+          const existing = Number(cur.rows[0]?.n ?? 0);
+          if (ports.length >= existing) {
+            const marks = sql.join(ports.map((p) => p.port));
+            await sql`DELETE FROM port_states WHERE device_hex = ${dev.device_hex} AND port NOT IN (${marks})`.execute(trx);
+          }
           for (const p of ports) {
             await trx
               .insertInto('port_states')
@@ -456,9 +464,10 @@ export function startWorker(
   callImpl: Call = callPlatform,
   db: Db = getDb(),
   intervalMs = WORKER_INTERVAL * 1000,
-): () => void {
+): () => Promise<void> {
   let stopped = false;
   workerState.started_at = nowStr();
+  let inflight: Promise<void> = Promise.resolve();
   const tick = async (): Promise<void> => {
     if (stopped) return;
     try {
@@ -466,11 +475,17 @@ export function startWorker(
     } catch (e) {
       logger.error({ err: e }, '[worker] 异常');
     }
-    setTimeout(tick, intervalMs).unref?.();
+    if (!stopped) setTimeout(tick, intervalMs).unref?.();
   };
   // 启动后立即跑一轮（与 Python start_worker 一致）
-  void tick();
-  return () => {
+  inflight = tick();
+  // 返回 async：等正在跑的那一轮结束后再返回，避免 closeDb 时还有写入在途
+  return async () => {
     stopped = true;
+    try {
+      await inflight;
+    } catch {
+      /* 轮次内部已记日志 */
+    }
   };
 }

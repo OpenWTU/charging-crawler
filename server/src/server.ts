@@ -12,6 +12,7 @@ dns.setDefaultResultOrder('ipv4first');
 import type { FastifyError, FastifyInstance, FastifyServerOptions } from 'fastify';
 import cookie from '@fastify/cookie';
 import { HOST, PORT, NODE_ENV, P2P_ENABLED, DATABASE_READONLY, AUTO_WORKER } from './config.js';
+import { MAX_BODY } from './domain/crypto.js';
 import { logger } from './logger.js';
 import { closeDb, createDb, getDb, getRaw, ping } from './db/index.js';
 import { migrate } from './db/migrate.js';
@@ -34,7 +35,8 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
     // 用 `true` 会信任客户端任意伪造的 XFF，直接绕过 IP 限流与自动拉黑；
     // 生产需显式 TRUST_PROXY=true 才开启（配合 Nginx 反代）。
     trustProxy: process.env.TRUST_PROXY === 'true' ? '127.0.0.1,172.16.0.0/12' : false,
-    bodyLimit: 8 * 1024 * 1024,
+    // 与 upload 的 MAX_BODY 保持一致：太大时 Fastify 会用默认错误体，破坏 {ok:false,error} 契约
+    bodyLimit: MAX_BODY,
     ...opts,
   });
 
@@ -111,7 +113,7 @@ async function main(): Promise<void> {
   app.log.info({ host: HOST, port: PORT, env: NODE_ENV }, 'charge-server 已启动');
 
   // 读写模式下启动抓取 worker（启动即跑第一轮）
-  let stopWorkerFn: (() => void) | null = null;
+  let stopWorkerFn: (() => Promise<void>) | null = null;
   if (!DATABASE_READONLY && AUTO_WORKER) {
     stopWorkerFn = startWorker();
     app.log.info('[worker] 已启动（读写模式，AUTO_WORKER=on）');
@@ -130,7 +132,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, '收到退出信号，正在关闭');
     try {
-      if (stopWorkerFn) stopWorkerFn();
+      if (stopWorkerFn) await stopWorkerFn();
       await stopP2p();
       await app.close();
       await closeDb();

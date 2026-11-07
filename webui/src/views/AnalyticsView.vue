@@ -133,7 +133,9 @@ async function load() {
   loading.value = true;
   error.value = false;
   try {
-    analytics.value = await getAnalytics();
+    const r = await getAnalytics();
+    // null = 本次结果已被更新的请求取代，保留现有数据不要覆盖
+    if (r) analytics.value = r;
   } catch (e) {
     error.value = true;
     console.warn('[analytics] load failed', e);

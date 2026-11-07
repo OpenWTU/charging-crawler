@@ -74,6 +74,7 @@ public final class Updater {
     /** 下载更新包并在校验通过后拉起系统安装器（必须在 UI 线程调用）。 */
     public void download(String apkPath, String sha256) {
         final Activity a = host.activity();
+        if (host.isGone()) return; // Activity 已销毁：别弹一个没人看的 Toast
         Toast.makeText(a, "开始下载…", Toast.LENGTH_SHORT).show();
         host.updatePool().execute(() -> {
             try {
