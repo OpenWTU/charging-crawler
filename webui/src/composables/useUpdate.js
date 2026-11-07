@@ -11,7 +11,22 @@ import { showToast } from 'vant';
 import { checkUpdate, startUpdate } from '../api/index.js';
 import { parseBridgeJSON } from '../api/transport.js';
 
-const SEEN_KEY = 'charge_update_seen';
+/** 已提示过的版本记录，格式 "versionCode:timestamp"（兼容旧版纯数字） */
+const SEEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 小时后允许再次自动提示
+
+function readSeen() {
+  const raw = String(localStorage.getItem(SEEN_KEY) || '');
+  const [codeStr, tsStr] = raw.split(':');
+  const code = Number(codeStr) || 0;
+  const ts = Number(tsStr) || 0;
+  return { code, ts };
+}
+
+function writeSeen(code) {
+  try {
+    localStorage.setItem(SEEN_KEY, code + ':' + Date.now());
+  } catch { /* 隐私模式等忽略 */ }
+}
 
 /**
  * @param {{ onAfterCheck?: () => void }} [deps] 检查完成后的追加动作（如自动刷新判定）
@@ -68,19 +83,26 @@ export function useUpdate(deps = {}) {
       return;
     }
     if (s.currentName) appVersion.value = String(s.currentName);
-    if (Number(s.currentCode) >= Number(s.versionCode)) {
+    const cur = Number(s.currentCode) || 0;
+    const latest = Number(s.versionCode) || 0;
+    if (latest <= cur) {
       if (!silent) showToast('已是最新版本');
       onAfterCheck();
       return;
     }
-    const seen = Number(localStorage.getItem(SEEN_KEY) || 0);
-    if (Number(s.versionCode) <= seen) {
-      if (!silent) { up.value = s; showUpdate.value = true; }
-      return;
+    // 自动检查：同一版本在 12 小时内只弹一次；手动检查（!silent）始终弹窗
+    if (silent) {
+      const seen = readSeen();
+      const fresh = seen.code === latest && Date.now() - seen.ts < SEEN_TTL_MS;
+      if (fresh) {
+        onAfterCheck();
+        return;
+      }
     }
-    localStorage.setItem(SEEN_KEY, String(s.versionCode));
+    writeSeen(latest);
     up.value = s;
     showUpdate.value = true;
+    onAfterCheck();
   }
 
   function onUpdateError() {

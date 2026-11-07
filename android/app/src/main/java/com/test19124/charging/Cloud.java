@@ -487,8 +487,9 @@ public final class Cloud {
 
     /** GitHub 直读：releases/latest 拿 tag → 下载 version.json asset → apkPath 指向 GitHub。 */
     private static JSONObject fetchVersionFromGitHub() throws Exception {
+        // 用 4 秒短超时：api.github.com 在国内常被阻断，卡 8 秒再回退服务器体验太差
         JSONObject latest = httpGetJson(
-                "https://api.github.com/repos/OpenWTU/charging-crawler/releases/latest");
+                "https://api.github.com/repos/OpenWTU/charging-crawler/releases/latest", 4000);
         String vjUrl = null;
         String apkUrl = null;
         JSONArray assets = latest.optJSONArray("assets");
@@ -501,7 +502,7 @@ public final class Cloud {
             }
         }
         if (vjUrl == null || vjUrl.isEmpty()) throw new java.io.IOException("无 version.json asset");
-        JSONObject d = httpGetJson(vjUrl);
+        JSONObject d = httpGetJson(vjUrl, 4000);
         // apkPath 指向 GitHub asset（downloadApk 白名单已放行 GitHub Release 前缀）
         if (apkUrl != null && !apkUrl.isEmpty()) d.put("apkPath", apkUrl);
         return d;
@@ -512,9 +513,14 @@ public final class Cloud {
     }
 
     private static JSONObject httpGetJson(String url) throws Exception {
+        return httpGetJson(url, 8000);
+    }
+
+    /** timeoutMs：连接/读取超时（GitHub 在国内常被阻断，检查更新时用较短超时快速回退服务器）。 */
+    private static JSONObject httpGetJson(String url, int timeoutMs) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        conn.setConnectTimeout(8000);
-        conn.setReadTimeout(8000);
+        conn.setConnectTimeout(timeoutMs);
+        conn.setReadTimeout(timeoutMs);
         conn.setRequestProperty("User-Agent", UA);
         try {
             InputStream in = conn.getInputStream();
