@@ -130,6 +130,8 @@ export const P2P_KEY_FILE = env('P2P_KEY_FILE', '/var/lib/charge-cloud/p2p_key')
 export const NODE_NAME = env('NODE_NAME', '');
 /** 节点 HTTP 地址（状态页切换节点用；App 切换后直连这个 URL） */
 export const NODE_URL = env('NODE_URL', '');
+/** 本节点公网 P2P 地址（如 /ip4/1.2.3.4/tcp/4001），心跳广播给其他节点用于互连 */
+export const NODE_P2P_ADDR = env('NODE_P2P_ADDR', '');
 /**
  * peerId 白名单权威源。用 GitHub contents API（api.github.com 不被 SNI 阻断，
  * raw.githubusercontent.com 在国内常被 TLS 阻断）。

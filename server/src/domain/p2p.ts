@@ -90,6 +90,8 @@ export interface P2pHandle {
 export interface P2pOptions {
   listenPort?: number;
   bootstrapAddrs?: string[];
+  /** 白名单里带的节点地址（自动互连，无需手配 bootstrap） */
+  autoAddrs?: string[];
   enableMdns?: boolean;
   whitelist?: Set<string>;
   keyFile?: string;
@@ -113,20 +115,42 @@ export async function loadOrCreateKey(keyFile: string): Promise<Uint8Array> {
   return privateKeyToProtobuf(key);
 }
 
+/** 白名单解析结果：peerId 集合 + 可主动连接的地址 */
+export interface WhitelistResult {
+  ids: Set<string>;
+  addrs: string[];
+}
+
 /** 从 GitHub raw 拉取白名单；失败回退本地缓存；都失败返回空（拒绝所有外部消息） */
 export async function loadWhitelist(
   url: string,
   cacheFile: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<Set<string>> {
-  const parse = (text: string): Set<string> => {
+): Promise<WhitelistResult> {
+  const parse = (text: string): WhitelistResult => {
+    const ids = new Set<string>();
+    const addrs: string[] = [];
     try {
       const data = JSON.parse(text) as { peers?: unknown };
-      const list = Array.isArray(data.peers) ? data.peers.map(String) : [];
-      return new Set(list);
+      const list = Array.isArray(data.peers) ? data.peers : [];
+      for (const item of list) {
+        if (typeof item === 'string') {
+          // 旧格式：纯 peerId
+          if (item) ids.add(item);
+        } else if (item && typeof item === 'object') {
+          const rec = item as Record<string, unknown>;
+          const id = String(rec.id ?? '').trim();
+          const addr = String(rec.addr ?? '').trim();
+          if (id) ids.add(id);
+          if (id && addr) {
+            addrs.push(addr.includes('/p2p/') ? addr : `${addr}/p2p/${id}`);
+          }
+        }
+      }
     } catch {
-      return new Set();
+      /* 解析失败返回空 */
     }
+    return { ids, addrs };
   };
   try {
     // Accept: application/vnd.github.raw 让 contents API 直接返回原始文本
@@ -142,7 +166,7 @@ export async function loadWhitelist(
       } catch {
         /* 缓存失败不影响 */
       }
-      logger.info({ count: peers.size }, '[p2p] 白名单已从远程加载');
+      logger.info({ count: peers.ids.size, addrs: peers.addrs.length }, '[p2p] 白名单已从远程加载');
       return peers;
     }
   } catch (e) {
@@ -150,25 +174,28 @@ export async function loadWhitelist(
   }
   try {
     const peers = parse(fs.readFileSync(cacheFile, 'utf8'));
-    logger.info({ count: peers.size }, '[p2p] 白名单从缓存加载');
+    logger.info({ count: peers.ids.size, addrs: peers.addrs.length }, '[p2p] 白名单从缓存加载');
     return peers;
   } catch {
     /* 缓存也没有，继续尝试镜像内默认值 */
   }
   try {
     const peers = parse(fs.readFileSync(P2P_WHITELIST_DEFAULT, 'utf8'));
-    logger.info({ count: peers.size }, '[p2p] 白名单从镜像默认值加载');
+    logger.info({ count: peers.ids.size, addrs: peers.addrs.length }, '[p2p] 白名单从镜像默认值加载');
     return peers;
   } catch {
     logger.warn('[p2p] 无白名单（远程/缓存/镜像默认都不可用），拒绝所有外部消息');
-    return new Set();
+    return { ids: new Set<string>(), addrs: [] };
   }
 }
 
 export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
   const listenPort = opts.listenPort ?? P2P_LISTEN_PORT;
   const whitelist = opts.whitelist ?? new Set<string>();
-  const bootstrapAddrs = opts.bootstrapAddrs ?? P2P_BOOTSTRAP;
+  // 显式 bootstrap + 白名单里的节点地址（新增节点自动互连）
+  const bootstrapAddrs = [
+    ...new Set([...(opts.bootstrapAddrs ?? P2P_BOOTSTRAP), ...(opts.autoAddrs ?? [])]),
+  ];
   const enableMdns = opts.enableMdns ?? P2P_MDNS;
   const keyFile = opts.keyFile ?? P2P_KEY_FILE;
 
@@ -369,11 +396,14 @@ async function ingestSnapshot(msg: SnapshotMessage): Promise<void> {
 export async function initP2p(): Promise<P2pHandle | null> {
   if (!P2P_ENABLED) return null;
   if (p2pInstance) return p2pInstance;
-  const whitelist = await loadWhitelist(P2P_WHITELIST_URL, P2P_WHITELIST_CACHE);
-  p2pInstance = await startP2p({ whitelist });
-  p2pWhitelistSize = whitelist.size;
+  const wl = await loadWhitelist(P2P_WHITELIST_URL, P2P_WHITELIST_CACHE);
+  p2pInstance = await startP2p({ whitelist: wl.ids, autoAddrs: wl.addrs });
+  p2pWhitelistSize = wl.ids.size;
   p2pInstance.onSnapshot(ingestSnapshot);
-  logger.info({ peerId: p2pInstance.peerId, whitelist: whitelist.size }, '[p2p] 已启动');
+  logger.info(
+    { peerId: p2pInstance.peerId, whitelist: wl.ids.size, autoAddrs: wl.addrs.length },
+    '[p2p] 已启动',
+  );
   return p2pInstance;
 }
 

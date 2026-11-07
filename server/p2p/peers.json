@@ -1,6 +1,14 @@
 {
   "peers": [
-    "12D3KooWS83QNfRTPqytwLy7i56pnr9pq1gYnSVD5sr869Cu3WHa",
-    "12D3KooWFjWj1yeaE6K3DyhvYdrc2TnfmyjeLpSssxUpWkT36pgC"
+    {
+      "id": "12D3KooWS83QNfRTPqytwLy7i56pnr9pq1gYnSVD5sr869Cu3WHa",
+      "addr": "/ip4/8.148.70.133/tcp/4001",
+      "name": "主节点"
+    },
+    {
+      "id": "12D3KooWFjWj1yeaE6K3DyhvYdrc2TnfmyjeLpSssxUpWkT36pgC",
+      "addr": "/ip4/141.11.148.175/tcp/4001",
+      "name": "备用节点"
+    }
   ]
 }
