@@ -32,6 +32,8 @@ services:
       NODE_NAME: ${NODE_NAME:-charge-node}
       NODE_URL: ${NODE_URL:-}
       NODE_P2P_ADDR: ${NODE_P2P_ADDR:-}
+      # 前面有 Nginx 时设 true（只信任本机/docker 网段转发的 XFF）
+      TRUST_PROXY: ${TRUST_PROXY:-false}
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ${DATA_DIR:-/var/lib/charge-cloud}:/data

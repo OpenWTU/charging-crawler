@@ -41,6 +41,9 @@ services:
       P2P_MDNS: "false"
       NODE_NAME: ${NODE_NAME:-主节点}
       NODE_URL: ${NODE_URL:-}
+      NODE_P2P_ADDR: ${NODE_P2P_ADDR:-}
+      # Nginx 反代在本机：只有显式开启才信任 X-Forwarded-For（防伪造绕过限流）
+      TRUST_PROXY: ${TRUST_PROXY:-true}
     volumes:
       # 时区：让容器内 nowStr() 等用北京时间（宿主已配 Asia/Shanghai）
       - /etc/localtime:/etc/localtime:ro
