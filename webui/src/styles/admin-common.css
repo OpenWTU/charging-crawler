@@ -123,18 +123,54 @@
    1. 空位排行两列挤成「体…/宿…/图…」
    2. 表格「总数/故障」列折成两行
    3. 侧边导航最后几项被裁在视口外且无提示 */
-@media (max-width: 600px) {
-  /* L1（复审实测）：三个页面用的是 legacy .tbl，也要 nowrap */
+/* ============================================================
+   移动端适配（≤900px）
+   ------------------------------------------------------------
+   之前只有两条零散规则（表格 nowrap + 排行单列），实测仍有：
+   · 按钮 .a-btn.sm 只有 28px 高，手机上难点
+   · .a-small / 表格字号偏小
+   · 工具栏按钮挤成多行后没有间距
+   · 宽表格溢出时外层不滚动，内容被硬切
+   · 断点用 600px 太窄，600~900 的平板也算不出问题
+   ============================================================ */
+@media (max-width: 900px) {
+  /* --- 触摸目标：统一到 ≥40px（原 .sm 是 28px） --- */
+  .a-btn,
+  .a-btn.sm {
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  /* --- 字号下限 12px，避免手机上要眯眼 --- */
+  .a-small,
+  .a-muted { font-size: 12px; }
+  .a-tbl { font-size: 13px; }
+
+  /* --- 工具栏：允许换行并保留间距（原来挤在一起） --- */
+  .a-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    row-gap: 10px;
+  }
+
+  /* --- 表格：外层可横向滚动 + 触摸惯性 --- */
+  .a-panel {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .a-tbl th,
+  .a-tbl td {
+    padding: 10px 8px;
+    white-space: nowrap;   /* 不再把列挤成两行 */
+  }
+  .a-tbl { min-width: max-content; }
+  .a-tbl .wrap { min-width: 180px; white-space: normal; }
+
+  /* legacy .tbl（实时/令牌/系统三页）同样处理 */
   .tbl th,
   .tbl td { white-space: nowrap; }
 
-  .a-tbl th,
-  .a-tbl td { white-space: nowrap; }
-  .a-tbl { min-width: max-content; } /* 让容器横向滚动而不是把单元格挤成两行 */
-  .a-tbl .wrap { min-width: 220px; }
-}
-
-/* 概览的空位排行（OverviewPage 里的 .rank）在小屏改单列 */
-@media (max-width: 600px) {
+  /* --- 概览的空位排行：小屏改单列 --- */
   .rank { grid-template-columns: 1fr !important; }
 }

@@ -1,14 +1,20 @@
 <template>
   <div class="shell">
-    <aside class="side">
-      <div class="brand">充电桩后台</div>
+    <!-- 移动端遮罩：点一下关抽屉 -->
+    <div v-if="menuOpen" class="side-mask" @click="menuOpen = false" />
+
+    <aside class="side" :class="{ open: menuOpen }">
+      <div class="brand">
+        <span>充电桩后台</span>
+        <button class="side-close" aria-label="收起菜单" @click="menuOpen = false">✕</button>
+      </div>
       <nav>
         <template v-for="group in groups" :key="group.title">
           <div class="grp">{{ group.title }}</div>
           <button
 v-for="m in group.items" :key="m.key" class="nav-item"
                   :class="{ active: tab === m.key }" :aria-current="tab === m.key ? 'page' : undefined"
-                @click="tab = m.key">
+                @click="selectTab(m.key)">
             <span>{{ m.label }}</span>
             <span v-if="m.badge" class="badge">{{ m.badge }}</span>
           </button>
@@ -19,8 +25,12 @@ v-for="m in group.items" :key="m.key" class="nav-item"
 
     <div class="main">
       <header class="topbar">
+        <!-- 移动端汉堡：<=900px 才显示（CSS 控制） -->
+        <button class="menu-btn" aria-label="打开菜单" :aria-expanded="menuOpen" @click="menuOpen = !menuOpen">
+          <span class="bars" />
+        </button>
         <span class="fresh" :class="freshTone" :title="freshTitle">● {{ freshText }}</span>
-        <span v-if="alertCount" class="alerts" @click="tab = 'overview'">⚠ {{ alertCount }} 条告警</span>
+        <span v-if="alertCount" class="alerts" @click="selectTab('overview')">⚠ {{ alertCount }} 条告警</span>
         <span class="spacer" />
         <span class="who">{{ me?.username }} · {{ roleText }}</span>
         <button class="btn ghost sm" @click="$emit('logout')">退出</button>
@@ -41,7 +51,7 @@ v-for="m in group.items" :key="m.key" class="nav-item"
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import { apiGet } from '../../api/adminApi.js';
 import OverviewPage from './OverviewPage.vue';
 import LivePage from './LivePage.vue';
@@ -74,6 +84,20 @@ const PAGES = {
 };
 
 const tab = ref('overview');
+// 移动端抽屉：<=900px 时侧栏收起，由汉堡按钮控制
+const menuOpen = ref(false);
+
+/** 切页统一走这里：移动端顺手关掉抽屉 */
+function selectTab(key) {
+  tab.value = key;
+  menuOpen.value = false;
+}
+
+// 抽屉打开时锁住背景滚动，避免滑动穿透
+watch(menuOpen, (open) => {
+  if (typeof document === 'undefined') return;
+  document.body.style.overflow = open ? 'hidden' : '';
+});
 const currentPage = computed(() => PAGES[tab.value] ?? OverviewPage);
 // 只有概览需要 Shell 下发的数据，其余页面自己拉
 const currentProps = computed(() => (tab.value === 'overview'
@@ -183,7 +207,8 @@ onMounted(async () => {
   }
   timer = setInterval(() => { void load(); }, 60000);
 });
-onBeforeUnmount(() => { if (timer) clearInterval(timer); });
+onBeforeUnmount(() => {
+  if (typeof document !== 'undefined') document.body.style.overflow = ''; if (timer) clearInterval(timer); });
 </script>
 
 <style scoped>
@@ -220,11 +245,111 @@ nav { display: grid; gap: 1px; }
 .who { color: var(--muted); }
 .content { padding: var(--sp-4); max-width: 1200px; width: 100%; }
 .err { color: var(--danger, #dc2626); font-size: var(--fs-12); }
-@media (max-width: 768px) {
+/* ===== 移动端（≤900px）：侧栏改成抽屉 =====
+   之前是「横排可滚动」：18 个菜单项在 390px 宽下要滑很久，且分组标题被隐藏，
+   用户找不到「配置中心 / 版本发布 / 备份恢复」这些靠后的项。改成汉堡 + 抽屉。 */
+.menu-btn { display: none; }
+.side-close { display: none; }
+.side-mask { display: none; }
+
+@media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; }
-  .side { flex-direction: row; overflow-x: auto; padding: 0; }
-  .brand, .side-foot, .grp { display: none; }
-  nav { display: flex; }
-  .nav-item { white-space: nowrap; }
+
+  /* 抽屉本体：先移出屏幕，打开时滑入 */
+  .side {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: min(280px, 82vw);
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    box-shadow: var(--shadow-pop, 0 10px 30px rgba(0,0,0,.18));
+    background: var(--card);
+    overflow-y: auto;
+    padding: var(--sp-2) 0;
+    flex-direction: column;
+  }
+  .side.open { transform: translateX(0); }
+
+  /* 遮罩 */
+  .side-mask {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(15, 23, 42, .38);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 顶部栏：汉堡 + 关闭按钮 */
+  .menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px; height: 44px;
+    margin-left: -8px;
+    border: 0; background: none; cursor: pointer;
+    color: var(--text-2, #374151);
+  }
+  .menu-btn .bars,
+  .menu-btn .bars::before,
+  .menu-btn .bars::after {
+    display: block;
+    width: 18px; height: 2px;
+    background: currentColor;
+    border-radius: 2px;
+    position: relative;
+  }
+  .menu-btn .bars::before,
+  .menu-btn .bars::after {
+    content: "";
+    position: absolute; left: 0;
+  }
+  .menu-btn .bars::before { top: -6px; }
+  .menu-btn .bars::after { top: 6px; }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px var(--sp-3) 12px;
+    font-size: var(--fs-15, 15px);
+  }
+  .side-close {
+    display: inline-flex;
+    align-items: center; justify-content: center;
+    width: 36px; height: 36px;
+    border: 0; background: none; cursor: pointer;
+    color: var(--muted);
+    font-size: 16px;
+  }
+  .grp { display: block; }
+  .side-foot { display: block; }
+
+  /* 触摸目标 ≥44px（原来 7px 内边距 → 行高约 30px，手机上难点） */
+  .nav-item {
+    min-height: 44px;
+    padding: 10px var(--sp-3);
+    font-size: var(--fs-14, 14px);
+  }
+
+  /* 顶部栏在窄屏收紧 */
+  .topbar { gap: 8px; padding: 6px 12px; flex-wrap: wrap; }
+  .who { font-size: 12px; }
+  .content { padding: 12px; }
+
+  /* 表格：横向滚动 + 触摸惯性；不要出现"内容被硬切"的错觉 */
+  .content :is(.a-tbl-wrap, .tbl-wrap, .table-wrap) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* 超窄屏（≤420px）进一步压缩 */
+@media (max-width: 420px) {
+  .topbar { font-size: 12px; }
+  .who { display: none; }   /* 用户名让位给「退出」，需要看详情可点开抽屉底部 */
+  .content { padding: 10px; }
 }
 </style>
