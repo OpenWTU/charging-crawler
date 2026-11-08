@@ -1,20 +1,77 @@
 # server/deploy —— Node 版部署
 
-## 一条命令部署（推荐，含自动更新）
+## 交互式一键部署（推荐）
 
 ```bash
 curl -fsSL -H "Accept: application/vnd.github.raw" \
   "https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/deploy/install.sh" | bash
 ```
 
-它自动完成：装 Docker → 拉镜像 → 起容器 → **装凌晨 3 点自动更新 timer（失败自动回退）**。
+也可以用 `bash install.sh`（本地已有文件时）。
 
-可选环境变量（不填就用默认）：
+它按 7 个阶段推进，**每一步先检查再动作**：
+
+| 阶段 | 做什么 |
+|---|---|
+| 1/7 环境检查 | root 权限、发行版、CPU 架构、内存、磁盘、能否访问 GitHub/GHCR |
+| 2/7 依赖检查 | curl / docker / docker compose / python3 —— **缺什么装什么**，已有的不动 |
+| 3/7 参数 | 逐项询问，**括号里是默认值，直接回车即用默认** |
+| 4/7 端口检查 | 8791 / 4001 是否被占；认出是旧 charge-node 则允许重建 |
+| 5/7 写配置 | 下载 compose + update-node.sh，写 `.env`（旧文件自动备份） |
+| 6/7 启动 | 拉镜像（tag 拉不到自动回退 latest）→ `docker compose up -d` |
+| 7/7 健康检查 | 最多等 120 秒；通过后装自动更新 timer 并打印登录信息 |
+
+**中途会问的项**（都有默认值）：
+
+| 提示 | 默认 | 说明 |
+|---|---|---|
+| 节点名称 | 主机名（云主机随机名会换成 `charge-node`） | 状态页卡片显示名 |
+| 数据目录 | `/var/lib/charge-cloud` | SQLite / 令牌密钥 / APK |
+| HTTP 端口 | `8791` | 容器只监听这个端口 |
+| P2P 端口 | `4001` | 多节点同步用 |
+| 节点 HTTP 地址 | 自动探测公网 IP 生成 | 状态页节点卡片（留空则不显示） |
+| 节点 P2P 公告地址 | `/ip4/<公网IP>/tcp/4001` | 随心跳广播给其他节点 |
+| 前面有反向代理吗 | 否 | 有 Nginx/Caddy 选「是」→ `TRUST_PROXY=true` |
+| 启用 P2P 同步 | 是 | 单机跑可以关 |
+| 镜像版本 | `latest` | 也可填 `v2.4.7` 固定版本 |
+| 自动更新时刻 | `03:00` | 留空 = 不装自动更新 |
+| 管理后台初始口令 | 随机 16 位 | 部署完会打印；首次登录强制改密 |
+
+### 三种运行方式
 
 ```bash
-NODE_NAME=我的节点 NODE_URL=https://我的域名 NODE_P2P_ADDR=/ip4/1.2.3.4/tcp/4001 \
+bash install.sh              # 交互式（推荐）
+bash install.sh --dry-run    # 只看会做什么，不写文件、不启动
+bash install.sh --yes        # 全默认，不问任何问题（CI/脚本化）
+```
+
+也可以预先用环境变量跳过对应的提问（设了就不再问）：
+
+```bash
+NODE_NAME=我的节点 NODE_URL=https://charge.example.com \
+TRUST_PROXY=true ADMIN_INIT_PASSWORD=MyPass12345678 \
   bash install.sh
 ```
+
+支持的变量：`NODE_NAME` `NODE_URL` `NODE_P2P_ADDR` `DATA_DIR` `P2P_ENABLED` `TRUST_PROXY`
+`HTTP_PORT` `P2P_PORT` `IMAGE_TAG` `ADMIN_INIT_PASSWORD` `UPDATE_AT` `ASSUME_YES` `DRY_RUN`
+
+### 幂等性
+
+重复执行不会破坏已有数据：
+
+- `.env` 与 `docker-compose.yml` **先备份再覆盖**（`.bak-<时间戳>`）
+- 数据目录里的 SQLite / token_key / version.json / APK **不动**
+- `ADMIN_SESSION_SECRET` 沿用已有的，避免重启后所有会话失效
+
+跑完后：
+
+- 服务：`http://<ip>:8791`，状态页 `/status`
+- **管理后台：`http://<ip>:8791/admin`**（账号 `admin` + 上面那个初始口令）
+- 自动更新：`systemctl list-timers charge-node-update.timer`
+- 更新日志：`/var/log/charge-update.log`
+
+## 环境变量参考
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
@@ -23,15 +80,12 @@ NODE_NAME=我的节点 NODE_URL=https://我的域名 NODE_P2P_ADDR=/ip4/1.2.3.4/
 | `NODE_P2P_ADDR` | 空 | 公网 P2P 地址（`/ip4/<公网IP>/tcp/4001`），随心跳广播给其他节点 |
 | `DATA_DIR` | `/var/lib/charge-cloud` | SQLite 与令牌密钥所在目录 |
 | `TRUST_PROXY` | 见下 | **前面有 Nginx 时设 `true`**：只信任本机/docker 网段转发的 `X-Forwarded-For`。不设时用 socket 真实地址（更安全；但前面有代理时会把所有请求当同一 IP，限流互相影响）。**默认值**：仓库根的 `docker-compose.yml`（主节点，配了 Nginx）默认 `true`；`docker-compose.node.yml`（单节点模板）默认 `false` |
+| `ADMIN_INIT_PASSWORD` | 空 | 首次启动且 `admin_users` 为空时，用它创建 `admin` 账号。**建完就没用了**；改密走后台 |
+| `ADMIN_SESSION_SECRET` | 空 | 会话签名密钥。不设则每次重启随机生成 → 所有管理员会话失效 |
 | `REGISTER_TOKEN` | 空 | 设备注册令牌。**留空 = 不校验**；配置后 `POST /api/device/register` 必须带同名 `x-register-token` 头（新版 App 已内置），用于阻止任何人不经 App 注册设备后污染公共数据 |
 
 > **启用 `REGISTER_TOKEN` 的顺序**：① 先让客户端升级到内置该头的新版 App；
 > ② 再设变量重启。否则旧版 App 的新设备注册会 403（已注册设备不受影响）。
-
-跑完后：
-- 服务：`http://<ip>:8791`，状态页 `/status`
-- 自动更新：`systemctl list-timers charge-node-update.timer`（每天 03:00）
-- 更新日志：`/var/log/charge-update.log`
 
 ## 手动部署（分步）
 

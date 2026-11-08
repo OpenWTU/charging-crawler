@@ -34,6 +34,10 @@ services:
       NODE_P2P_ADDR: ${NODE_P2P_ADDR:-}
       # 前面有 Nginx 时设 true（只信任本机/docker 网段转发的 XFF）
       TRUST_PROXY: ${TRUST_PROXY:-false}
+      # 管理后台：首次启动时若 admin_users 为空，用这个口令建 admin 账号（建完就没用了）
+      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:-}
+      # 会话签名密钥：不设则每次重启随机生成 → 所有管理员会话失效
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:-}
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ${DATA_DIR:-/var/lib/charge-cloud}:/data
