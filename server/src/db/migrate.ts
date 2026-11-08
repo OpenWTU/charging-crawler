@@ -65,10 +65,23 @@ const COLUMN_PATCHES: Record<string, ReadonlyArray<readonly [string, string]>> =
     ['real_ip', 'TEXT'],
   ],
   area_samples: [['area_id', 'TEXT']],
-  devices: [['status', "TEXT NOT NULL DEFAULT 'approved'"]],
+  devices: [
+    ['status', "TEXT NOT NULL DEFAULT 'approved'"],
+    // 软删除：后台删设备只写 deleted_at，数据仍可追溯
+    ['deleted_at', 'TEXT'],
+  ],
   areas: [
     ['lat', 'REAL'],
     ['lng', 'REAL'],
+    // 软删除：后台删区域只写 deleted_at
+    ['deleted_at', 'TEXT'],
+  ],
+  // 管理后台（P1）：多账号 + 角色 + 强制改密 + 登录轨迹
+  admin_users: [
+    ['role', "TEXT NOT NULL DEFAULT 'viewer'"],
+    ['must_change', 'INTEGER NOT NULL DEFAULT 0'],
+    ['last_login_at', 'TEXT'],
+    ['last_login_ip', 'TEXT'],
   ],
   area_status: [['raw_json', 'TEXT']],
   port_states: [['status_group', "TEXT NOT NULL DEFAULT 'unknown'"]],
@@ -186,6 +199,12 @@ export function applySchemaPatches(conn: MigrateConn): void {
   conn.exec(
     'CREATE INDEX IF NOT EXISTS idx_samples_snapshot ON area_samples(snapshot_id)',
   );
+  // 跨节点数据互校按 captured_at 找「同一时刻」的基准快照（见 docs/p2p-validation.md）
+  if (tables.has('snapshots') && columnNames(conn, 'snapshots').has('captured_at')) {
+    conn.exec(
+      'CREATE INDEX IF NOT EXISTS idx_snapshots_captured ON snapshots(captured_at)',
+    );
+  }
   if (tables.has('port_states')) {
     conn.exec(
       'CREATE INDEX IF NOT EXISTS idx_port_states_group '

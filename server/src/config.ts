@@ -183,3 +183,17 @@ export const SERVER_VERSION = env('SERVER_VERSION', 'dev');
  * 等新版 App 普及后再设该变量即可，无需改代码。
  */
 export const REGISTER_TOKEN = env('REGISTER_TOKEN', '').trim();
+
+/* ---------------- 管理后台 ---------------- */
+
+/**
+ * 初始管理员口令（可选）。**仅在 `admin_users` 表为空时**用来创建第一个 super 账号，
+ * 并标记「首次登录必须改密」。未配置则不创建任何账号（不会留下默认口令）。
+ */
+export const ADMIN_INIT_PASSWORD = env('ADMIN_INIT_PASSWORD', '');
+
+/** 初始管理员的用户名（默认 admin） */
+export const ADMIN_INIT_USERNAME = env('ADMIN_INIT_USERNAME', 'admin').trim() || 'admin';
+
+/** 会话签名密钥（建议 ≥16 位随机串；缺失时进程内随机，重启即失效所有会话） */
+export const ADMIN_SESSION_SECRET = env('ADMIN_SESSION_SECRET', '');

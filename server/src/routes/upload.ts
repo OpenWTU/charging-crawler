@@ -34,6 +34,7 @@ import { isBanned, recordBan } from '../domain/banlist.js';
 import { rateOk } from '../domain/ratelimit.js';
 import { broadcastSnapshot } from '../domain/p2p.js';
 import { snapshotDigest } from '../domain/worker.js';
+import { getSetting } from '../domain/adminsettings.js';
 import { REGISTER_TOKEN } from '../config.js';
 import { logger } from '../logger.js';
 
@@ -94,6 +95,8 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
 
     // 验签
     let deviceOk = false;
+    // pending 设备且自动审批关闭时，验签通过也不允许上传（等管理员批）
+    let pendingBlock = false;
     if (deviceId && sig.length === 64) {
       const r = await sql<{ secret_enc: string; revoked: number; status: string }>`
         SELECT secret_enc, revoked, status FROM devices WHERE device_id = ${deviceId}
@@ -104,9 +107,14 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
           const secret = decryptToken(String(d.secret_enc));
           const expect = deviceSignature(secret, ts, nonce, body);
           deviceOk = hexEqual(sig, expect);
-          // 自动审批：pending 设备验签成功即转 approved（不再需要人工）
+          // pending 设备：自动审批开 → 验签通过即转 approved；关 → 拒绝上传，等管理员在后台批
           if (deviceOk && (d.status || 'approved') === 'pending') {
-            await sql`UPDATE devices SET status = 'approved' WHERE device_id = ${deviceId}`.execute(db);
+            const autoApprove = await getSetting('device_auto_approve');
+            if (autoApprove) {
+              await sql`UPDATE devices SET status = 'approved' WHERE device_id = ${deviceId}`.execute(db);
+            } else {
+              pendingBlock = true;
+            }
           }
         } catch {
           deviceOk = false;
@@ -116,6 +124,14 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     if (!deviceOk) {
       recordBan(deviceId || null, ip, 'bad_sig');
       return reply.code(401).send({ ok: false, error: '签名校验失败（设备未注册或已撤销）' });
+    }
+    if (pendingBlock) {
+      // 自动审批关闭：pending 设备必须等管理员在后台审批后才能上传
+      return reply.code(403).send({
+        ok: false,
+        code: 'pending',
+        error: '设备待管理员审批，请稍后再试或联系管理员',
+      });
     }
 
     // 解析与校验
@@ -362,7 +378,8 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     }
 
     const stamp = nowStr();
-    // 自动审批：新设备直接 approved（用户决策：不要管理后台）
+    // 自动审批开关（默认开）：关掉后新设备注册为 pending，等管理员在后台审批
+    const autoApprove = await getSetting('device_auto_approve');
     await db
       .insertInto('devices')
       .values({
@@ -373,7 +390,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
         created_at: stamp,
         uploads: 0,
         revoked: 0,
-        status: 'approved',
+        status: autoApprove ? 'approved' : 'pending',
       })
       .onConflict((oc) =>
         oc.column('device_id').doUpdateSet({
@@ -384,6 +401,6 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       )
       .execute();
 
-    return reply.send({ ok: true, device_id: did });
+    return reply.send({ ok: true, device_id: did, pending: !autoApprove });
   });
 }

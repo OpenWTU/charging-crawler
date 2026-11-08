@@ -54,13 +54,13 @@ function postJson(url: string, headers: Record<string, string>, obj: unknown) {
 }
 
 describe('设备注册（自动审批）', () => {
-  it('新设备直接 approved', async () => {
+  it('默认自动审批开启：新设备直接 approved', async () => {
     const res = await postJson('/api/device/register', {}, { device_id: deviceId, secret });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { ok: boolean; device_id?: string; pending?: boolean };
     expect(body.ok).toBe(true);
     expect(body.device_id).toBe(deviceId);
-    expect(body.pending).toBeUndefined(); // 自动审批：无 pending
+    expect(body.pending).toBe(false); // 自动审批开 → 不进入 pending
 
     const db = createDb(dbPath);
     const row = await sql<{ status: string }>`

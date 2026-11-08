@@ -25,7 +25,7 @@ import { registerStaticRoutes } from './routes/static.js';
 import { registerMiscRoutes } from './routes/misc.js';
 import { registerUploadRoutes } from './routes/upload.js';
 import { registerStatusRoutes } from './routes/status.js';
-import { registerAdminRoutes } from './routes/admin.js';
+import { registerAdminRoutes, ensureAdminSeed } from './routes/admin.js';
 
 export type App = FastifyInstance;
 
@@ -133,6 +133,9 @@ async function main(): Promise<void> {
   } catch (err) {
     app.log.error({ err }, '[p2p] 初始化失败，服务继续以单节点模式运行');
   }
+
+  // 管理后台初始账号（admin_users 为空且配置了 ADMIN_INIT_PASSWORD 时才创建）
+  await ensureAdminSeed();
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, '收到退出信号，正在关闭');
