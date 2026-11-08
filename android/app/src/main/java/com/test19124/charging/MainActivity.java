@@ -23,6 +23,7 @@ import com.test19124.charging.state.OverviewCache;
 import com.test19124.charging.state.SecureState;
 import com.test19124.charging.state.StateBuilder;
 import com.test19124.charging.ui.LogDialog;
+import com.test19124.charging.ui.StatusBarTheme;
 import com.test19124.charging.web.AppWebShell;
 import com.test19124.charging.web.WebErrorPages;
 
@@ -85,6 +86,14 @@ public class MainActivity extends Activity
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 首屏先按「浅色」把状态栏定好：WebView 起来后前端会立刻用
+        // setDarkMode(实际主题) 覆盖一次（useTheme 的 watch 带 immediate）。
+        // 不预置的话，深色主题用户会看到顶部一条系统默认色闪一下。
+        try {
+            StatusBarTheme.apply(getWindow(), false);
+        } catch (Throwable ignored) {
+            // 状态栏美化失败不能影响启动
+        }
         tokens = new TokenStore(this);
         store = new Store(this);
         // 节点发现：启动时后台拉取 GitHub 目录 + mDNS，动态切服务器地址

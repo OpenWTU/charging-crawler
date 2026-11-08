@@ -6,7 +6,34 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
-## [v2.4.20] - 2026-11-08
+## [v2.4.21] - 2026-11-08
+
+### 状态栏跟随深色模式：补上前置 flag（原来被 ROM 静默忽略）
+排查发现链路**本来就是通的**：
+
+```
+native.js setDarkMode → AndroidHost.setDarkMode (@JavascriptInterface)
+  → BridgeHost 接口 → ActivityBridgeHost.setDarkMode
+  → StatusBarTheme.apply(window, dark)   // setStatusBarColor + 图标明暗
+```
+
+`StatusBarTheme` 也早写好了（深色 `#0F172A`、浅色 `#F3F5F9`、API 30+ 与旧版两套图标明暗）。
+**但 `setStatusBarColor` 缺前置条件会静默失效** —— 部分 ROM（尤其开了 edge-to-edge 的
+RealmeUI / ColorOS）要求窗口带 `FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS` 且不能带
+`FLAG_TRANSLUCENT_STATUS`，否则调用成功、颜色不变。
+
+**改动**：
+1. `apply()` 里显式 `addFlags(FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)` +
+   `clearFlags(FLAG_TRANSLUCENT_STATUS)`，再设色
+2. `MainActivity.onCreate` 先按浅色预置一次，避免深色用户看到顶部闪一下系统默认色
+   （WebView 起来后前端 `useTheme` 的 `immediate` watch 会立刻用真实主题覆盖）
+3. `setDarkMode` 加 `DebugLog`（App 内「查看日志」能看到「状态栏 → 深色/浅色」，便于确认桥是否真的调到）
+4. `StatusBarTheme.lastState()` 暴露最近一次应用值，供排查
+
+**说明**：`setStatusBarColor` 在 `targetSdk >= 35`（强制 edge-to-edge）会变成 no-op。
+当前 `targetSdk=34` 仍有效；将来升 35 时要改成「状态栏透明 + 页面自己留 safe-area inset」。
+
+
 
 ### 修复：暗色模式不跟随系统（两个 bug 叠加）
 用户反馈「设置里选跟随系统、手机开暗色，页面还是亮的」。查出**两个独立原因**：

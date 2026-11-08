@@ -26,15 +26,32 @@ public final class StatusBarTheme {
     private StatusBarTheme() {
     }
 
+    /** 最近一次应用的值，便于排查「桥调了但状态栏没变」这类问题。 */
+    private static volatile boolean lastDark = false;
+    private static volatile long lastApplyAt = 0L;
+
+    /** 诊断用：返回最近一次应用的状态（形如 dark=true @1699…）。 */
+    public static String lastState() {
+        return "dark=" + lastDark + " @" + lastApplyAt;
+    }
+
     /** 必须在 UI 线程调用。 */
     public static void apply(Window window, boolean dark) {
         if (window == null) {
             return;
         }
+        // FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS / 清 TRANSLUCENT_STATUS：
+        // 缺这两个前提时 setStatusBarColor 会被**静默忽略**（部分 ROM，尤其开了
+        // edge-to-edge 的 RealmeUI/ColorOS 上很常见）—— 表现就是「桥调用成功、
+        // 状态栏颜色却不变」。显式加一遍，代价可以忽略。
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
         // 底色：深色页面用深色状态栏，浅色页面用页面底色（不再沿用系统主题的浅灰）。
         // 注意：targetSdk 升到 35（强制 edge-to-edge）后 setStatusBarColor 会变成 no-op，
         // 届时需要改成 WindowCompat.setDecorFitsSystemWindows(false) + 状态栏透明。
         window.setStatusBarColor(dark ? DARK : LIGHT);
+        lastDark = dark;
+        lastApplyAt = System.currentTimeMillis();
         // 图标明暗：深色底配浅色图标，浅色底配深色图标。
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController controller = window.getInsetsController();

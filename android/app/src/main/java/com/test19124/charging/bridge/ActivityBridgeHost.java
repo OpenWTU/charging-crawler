@@ -3,6 +3,7 @@ package com.test19124.charging.bridge;
 import android.app.Activity;
 import android.os.Handler;
 
+import com.test19124.charging.DebugLog;
 import com.test19124.charging.Store;
 import com.test19124.charging.TokenStore;
 import com.test19124.charging.capture.CaptureFlow;
@@ -113,7 +114,12 @@ public final class ActivityBridgeHost implements BridgeHost {
         // 改窗口状态栏必须在 UI 线程；页面卸载后忽略迟到的主题回调
         env.ui().post(() -> {
             if (!env.isGone()) {
-                StatusBarTheme.apply(env.activity().getWindow(), dark);
+                try {
+                    StatusBarTheme.apply(env.activity().getWindow(), dark);
+                    DebugLog.add("状态栏 → " + (dark ? "深色" : "浅色"));
+                } catch (Throwable e) {
+                    DebugLog.add("状态栏配色失败: " + e.getMessage());
+                }
             }
         });
     }
