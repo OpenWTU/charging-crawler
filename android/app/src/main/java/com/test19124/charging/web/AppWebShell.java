@@ -209,8 +209,12 @@ public final class AppWebShell {
         }
         try {
             java.io.InputStream in = host.activity().getAssets().open(path.substring(1));
+            // ★ 主文档必须是 text/html：第 8 轮补 MIME 映射时把这条漏了，
+            // v2.4.7 的 APK 因此把 app.html / admin.html 当 application/octet-stream，
+            // WebView 不渲染 → 整个 App 与 App 内管理后台白屏。
             String mime = path.endsWith(".js") ? "application/javascript"
                     : path.endsWith(".css") ? "text/css"
+                : path.endsWith(".html") || path.endsWith(".htm") ? "text/html"
                 : path.endsWith(".svg") ? "image/svg+xml"
                 : path.endsWith(".png") ? "image/png"
                 : path.endsWith(".webp") ? "image/webp"
