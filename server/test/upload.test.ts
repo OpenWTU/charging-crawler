@@ -15,6 +15,7 @@ import { migrate } from '../src/db/migrate.js';
 import { NodeSqliteDatabase } from '../src/db/node-sqlite.js';
 import { buildServer } from '../src/server.js';
 import { deviceSignature } from '../src/domain/crypto.js';
+import { invalidateSettingsCache } from '../src/domain/adminsettings.js';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'charge-upload-test-'));
 const dbPath = path.join(tmpDir, 'charge.db');
@@ -232,8 +233,15 @@ describe('S2：设备↔桩归属（跨设备改写被拒）', () => {
     );
   }
 
-  it('首见登记归属，随后跨设备改写被拒绝', async () => {
+  it('显式开启 port_owner_guard 后，跨设备改写被拒绝', async () => {
+    // 2026-11-08：排他默认关闭（线上是多设备众包），这个测试改为显式打开开关验证。
+    // 默认「谁都能写」的行为由 regression-r6.test.ts 的「多设备众包」用例覆盖。
     const db = createDb(dbPath);
+    await sql`
+      INSERT INTO app_settings (key, value) VALUES ('port_owner_guard', 'true')
+      ON CONFLICT (key) DO UPDATE SET value = 'true'
+    `.execute(db);
+    invalidateSettingsCache();
     // 区域必须在 areas 表里，否则 splitValidAreas 会判「未知充电区」
     await sql`
       INSERT INTO areas (area_id, name, first_seen, last_seen)
@@ -292,5 +300,12 @@ describe('S2：设备↔桩归属（跨设备改写被拒）', () => {
       SELECT owner_device FROM controllers WHERE device_hex = ${pileHex}
     `.execute(db);
     expect(owner2.rows[0]?.owner_device).toBe(deviceId);
+
+    // 恢复默认（不排他），避免影响同一文件里后续用例
+    await sql`
+      INSERT INTO app_settings (key, value) VALUES ('port_owner_guard', 'false')
+      ON CONFLICT (key) DO UPDATE SET value = 'false'
+    `.execute(db);
+    invalidateSettingsCache();
   });
 });

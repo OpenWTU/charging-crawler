@@ -253,9 +253,16 @@ function onAppResume() {
 function onUploadDone(raw) {
   const payload = typeof raw === 'string' ? safeParse(raw) : raw;
   const s = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  // 2026-11-08：原来上传失败时只弹提示就 return，页面完全不刷新 ——
+  // 表现是「抓了一次，页面还停在旧数据/加载态」，用户以为抓取没生效。
+  // 上传失败只说明「服务端没收到」，本地这一次抓到的区域数据是有效的，
+  // 所以无论如何都要走一遍刷新，把 loading 收掉、时间与健康条更新。
   if (s && s.ok === false) {
     showToast('上传失败：' + (s.msg || '请稍后重试'));
-    return;
+  } else if (s && Array.isArray(s.rejected) && s.rejected.length) {
+    // 服务端部分拒绝（例如桩归属不属于本设备）：快照收了、端口没写。
+    // 明确告诉用户，否则会以为「端口数据没变 = 抓取失败」。
+    showToast(`${s.rejected.length} 个桩的端口未能写入（归属属于其他设备），其余已上传`);
   }
   // 上传发生在 __onRefreshDone 之后：等云端真正写入后再刷新当前端口面板，
   // 并且刷新概览——顶部健康条的 token_ready / 采集异常计数 / 最后更新时间都来自

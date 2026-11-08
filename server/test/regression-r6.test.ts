@@ -251,3 +251,81 @@ describe('回归：端口变化不能被当成重复（第 4 轮原始 S1 bug）
     expect(st.rows[0]?.status).toBe('charging');
   });
 });
+
+describe('回归：多设备众包写同一个桩（port_owner_guard 默认关）', () => {
+  it('设备 A 报过之后，设备 B 仍能写同一个桩（owner_device 变成最后写入者）', async () => {
+    const area = '众包测试区';
+    const hexA = 'AA000001';
+    const hexB = 'AA000002';
+    const devA = 'a0a0a0a0a0a0a0a1';
+    const devB = 'b0b0b0b0b0b0b0b2';
+    const secA = '11'.repeat(32);
+    const secB = '22'.repeat(32);
+
+    // 两个设备各自注册
+    for (const [d, s] of [[devA, secA], [devB, secB]] as const) {
+      const r = await postJson('/api/device/register', {}, { device_id: d, secret: s });
+      expect(r.statusCode).toBe(200);
+    }
+    // 登记区域与两个桩（cleanPorts 只认 controllers 里已登记的 device_hex）
+    const db = getDb();
+    await sql`
+      INSERT INTO areas (area_id, name, first_seen, last_seen)
+      VALUES ('r6crowd', ${area}, '2026-11-08 09:00:00', '2026-11-08 09:00:00')
+      ON CONFLICT (area_id) DO NOTHING
+    `.execute(db);
+    for (const h of [hexA, hexB]) {
+      await sql`
+        INSERT INTO controllers (device_hex, area_id, area_name, updated_at)
+        VALUES (${h}, 'r6crowd', ${area}, '2026-11-08 09:00:00')
+        ON CONFLICT (device_hex) DO NOTHING
+      `.execute(db);
+    }
+
+    const mk = (status: string) => ({
+      project: 'crowd',
+      app_version: '0.0.1',
+      areas: [{ name: area, total_port: 2, idle_port: 1, charging_port: 1, fault_port: 0 }],
+      ports: [{ device_hex: hexA, ports: [{ port: '01', status, group: status === 'free' ? 'free' : 'busy' }] }],
+    });
+
+    async function upload(dev: string, sec: string, nonce: string, status: string) {
+      const body = JSON.stringify(mk(status));
+      const tm = ts();
+      return postJson('/api/snapshot', {
+        'x-charge-timestamp': tm,
+        'x-charge-nonce': nonce,
+        'x-charge-signature': deviceSignature(sec, tm, nonce, Buffer.from(body, 'utf8')),
+        'x-device-id': dev,
+      }, mk(status));
+    }
+
+    // 设备 A 先写：free
+    const rA = await upload(devA, secA, 'c0c0c0c0c0c00001', 'free');
+    expect(rA.statusCode).toBe(200);
+    expect((rA.json() as { rejected?: string[] }).rejected).toBeUndefined();
+
+    const afterA = await sql<{ status: string; owner_device: string | null }>`
+      SELECT ps.status, c.owner_device FROM port_states ps
+        JOIN controllers c ON c.device_hex = ps.device_hex
+       WHERE ps.device_hex = ${hexA} AND ps.port = '01'
+    `.execute(db);
+    expect(afterA.rows[0]?.status).toBe('free');
+    expect(afterA.rows[0]?.owner_device).toBe(devA);
+
+    // 设备 B 再写同一个桩：charging —— 必须成功（默认不排他）
+    const rB = await upload(devB, secB, 'c0c0c0c0c0c00002', 'charging');
+    expect(rB.statusCode).toBe(200);
+    const bodyB = rB.json() as { rejected?: string[]; warn?: string };
+    expect(bodyB.rejected).toBeUndefined();   // ← 关键：不能被 owner 规则拒
+    expect(bodyB.warn).toBeUndefined();
+
+    const afterB = await sql<{ status: string; owner_device: string | null }>`
+      SELECT ps.status, c.owner_device FROM port_states ps
+        JOIN controllers c ON c.device_hex = ps.device_hex
+       WHERE ps.device_hex = ${hexA} AND ps.port = '01'
+    `.execute(db);
+    expect(afterB.rows[0]?.status).toBe('charging');  // ← B 的数据真的写进去了
+    expect(afterB.rows[0]?.owner_device).toBe(devB);  // owner 变成「最后写入者」
+  });
+});

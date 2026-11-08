@@ -38,6 +38,17 @@ export interface AppSettings {
   worker_interval_sec: number;
   /** 数据保留天数 */
   data_retention_days: number;
+  /**
+   * 端口数据是否按「设备」排他。
+   *
+   * 默认 **false** —— 真实场景是多台设备众包上报同一批桩（线上实测 17 台设备、
+   * 每台单次都带全部 39 个区域）。开启排他后只有首见设备能写，其它设备的数据
+   * 会被静默丢弃，等于废掉众包。
+   *
+   * 只有当「确定只有一台可信设备」时才建议打开（防伪造用途）。
+   * 更好的准入控制是 REGISTER_TOKEN，而不是这个开关。
+   */
+  port_owner_guard: boolean;
 }
 
 export const SETTINGS_DEFAULTS: AppSettings = {
@@ -50,6 +61,7 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   p2p_extra_peers: [],
   worker_interval_sec: 600,
   data_retention_days: 90,
+  port_owner_guard: false,
 };
 
 export type SettingKey = keyof AppSettings;
@@ -68,6 +80,7 @@ export const SETTING_SCHEMA: Record<
   p2p_extra_peers: { type: 'peers' },
   worker_interval_sec: { type: 'number', min: 60, max: 86400, note: '需重启生效' },
   data_retention_days: { type: 'number', min: 7, max: 3650 },
+  port_owner_guard: { type: 'bool', note: '开启后同一桩只允许首见设备写入（会破坏多设备众包，默认关）' },
 };
 
 /* ---------------- 缓存 ---------------- */
@@ -90,8 +103,13 @@ function coerce<K extends SettingKey>(key: K, raw: unknown): AppSettings[K] {
   if (raw === undefined || raw === null) return def;
   try {
     const v = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    if (key === 'device_auto_approve' || key === 'p2p_trust_non_whitelist') {
+    // 按 schema 的 type 判断，不再硬编码 key —— 原来只列了 device_auto_approve /
+    // p2p_trust_non_whitelist，新加的 bool 项（如 port_owner_guard）会掉到下面的
+    // Number(v) 分支，读出来是 NaN → 回退默认值，表现为「后台改了不生效」。
+    const spec = SETTING_SCHEMA[key];
+    if (spec?.type === 'bool' || spec?.type === 'bool_or_null') {
       if (v === null) return null as AppSettings[K];
+      if (typeof v === 'string' && v.trim() === '') return def;
       return (v === true || v === 'true' || v === 1 || v === '1') as AppSettings[K];
     }
     if (key === 'p2p_validate_mode') {
@@ -103,7 +121,6 @@ function coerce<K extends SettingKey>(key: K, raw: unknown): AppSettings[K] {
     let n = Number(v);
     if (!Number.isFinite(n)) return def;
     // L4：读取侧也钳制，防止手工改库写入越界值
-    const spec = SETTING_SCHEMA[key];
     if (spec?.min !== undefined) n = Math.max(spec.min, n);
     if (spec?.max !== undefined) n = Math.min(spec.max, n);
     return n as AppSettings[K];

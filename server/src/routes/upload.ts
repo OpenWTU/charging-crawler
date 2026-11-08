@@ -302,6 +302,18 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     }
 
     // 单事务落库
+    // 2026-11-08 修正：端口数据的「设备排他」默认关闭。
+    // 线上实测是 17 台设备众包上报同一批 39 个桩（每台单次都带全部区域），排他等于
+    // 只让首见设备写、其它 16 台的数据静默丢弃 —— 那是我 S2 的设计错误。
+    // 现在默认 false（谁都能写，owner_device 只记「最后写入者」用于排查）。
+    //
+    // ⚠️ 必须在事务**外**读：getSetting 走的是 getDb() 的另一个连接，
+    // 放进 db.transaction() 里会和 trx 争锁 → 上传整体 20 秒超时（已实测踩到）。
+    let ownerGuardOn = false;
+    try {
+      ownerGuardOn = (await getSetting('port_owner_guard')) === true;
+    } catch { /* 读不到就用默认（不排他） */ }
+
     let snapshotId = 0;
     try {
       await db.transaction().execute(async (trx) => {
@@ -343,13 +355,22 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
         }
 
         rejectedDevices = [];
-        // S2：设备↔桩归属校验
+        // S2：设备↔桩归属校验（仅 ownerGuardOn 时生效）
         // 原来只判 device_hex 存在于 controllers —— 任意自注册设备都能上报别人的桩，
         // 把满桩刷成「空闲」（实测 /api/area-ports 立刻由 full 变 free=16）。
         // 规则：首见登记归属；同设备可继续写；跨设备降级为「只记日志、不写 port_states」。
         for (const item of cleanPortsResult) {
           let owner = ownerMap.get(item.device_hex) ?? null;
-          if (!owner && deviceId) {
+          if (!ownerGuardOn) {
+            // 不排他：任何已注册设备都能写；owner_device 只记「最后写入者」
+            if (deviceId && owner !== deviceId) {
+              await sql`
+                UPDATE controllers SET owner_device = ${deviceId}
+                 WHERE device_hex = ${item.device_hex}
+              `.execute(trx);
+              ownerMap.set(item.device_hex, deviceId);
+            }
+          } else if (!owner && deviceId) {
             // M11（复审）：原来不检查影响行数，并发两个设备首报同一个桩时，
             // 落败方仍然往 ownerMap 里塞自己并继续写 port_states。改为按影响行数判定，
             // 抢输就重新读归属并按跨设备规则处理。
@@ -368,7 +389,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
               ownerMap.set(item.device_hex, owner);
             }
           }
-          if (owner && deviceId && owner !== deviceId) {
+          if (ownerGuardOn && owner && deviceId && owner !== deviceId) {
             // S2 的补充（2026-11-08 实测踩到）：原规则是「首见登记 + 永久锁定」，
             // 一个只上报过 1 次的设备把全部 39 个桩都认领了，之后用户换设备/重装 App
             // （device_id 变了）就再也写不进去，audit 里连续 owner_rejected。
