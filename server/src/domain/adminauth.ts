@@ -180,6 +180,14 @@ interface LoginState {
 
 const loginState = new Map<string, LoginState>();
 
+/** M11：loginState 每条 IP 永久留 —— 每次失败时顺带清过期的 */
+function sweepLoginState(now: number): void {
+  if (loginState.size < 200) return;
+  for (const [k, s] of loginState) {
+    if (s.lockedUntil <= now && now - s.windowStart > LOGIN_LOCK_SEC) loginState.delete(k);
+  }
+}
+
 export type LoginVerdict = { ok: true } | { ok: false; retryAfterSec: number };
 
 /** 限流键：IP 与 IP+用户名 各计一份（只看 IP 时全站共享一个桶，任何人 5 次就能锁死所有管理员） */
@@ -205,6 +213,7 @@ export function loginAllowed(ip: string, username?: string): LoginVerdict {
 /** 记一次失败；返回是否触发锁定 */
 export function noteLoginFailure(ip: string, username?: string): boolean {
   const now = Math.floor(Date.now() / 1000);
+  sweepLoginState(now);
   let locked = false;
   for (const key of keysOf(ip, username)) {
     let s = loginState.get(key);

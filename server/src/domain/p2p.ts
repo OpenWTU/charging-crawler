@@ -43,6 +43,7 @@ import { sql } from '../db/index.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../logger.js';
 import { storeSnapshot, snapshotDigest } from './worker.js';
+import { validatePayload } from './store.js';
 import { recordValidation, validateIncoming } from './p2pvalidate.js';
 import { getSetting } from './adminsettings.js';
 import { nowStr } from './store.js';
@@ -511,7 +512,25 @@ async function ingestSnapshot(msg: SnapshotMessage, fromId: string): Promise<voi
     const payload = vr.decision === 'suspect'
       ? { ...msg.payload, _suspect: true }
       : msg.payload;
-    await storeSnapshot(payload, 'p2p', db);
+    // M8：P2P 来的 payload 不能直接落库
+    // ① 形状没校验过 —— 多出来的字段（token、_suspect、任意垃圾）会被 /api/latest 原样下发
+    // ② 去重判据用的是发送方自报的 body_sha256（可伪造），必须本地重算
+    let safePayload: Record<string, unknown>;
+    try {
+      safePayload = validatePayload(payload) as unknown as Record<string, unknown>;
+    } catch (e) {
+      logger.warn({ err: e, peer: fromId.slice(0, 16) }, '[p2p] payload 形状非法，已丢弃');
+      return;
+    }
+    const localDigest = snapshotDigest(safePayload);
+    if (localDigest !== msg.body_sha256) {
+      // 摘要不一致：消息可能被篡改，或发送方用了不同序列化 —— 以本地重算为准继续去重
+      logger.warn(
+        { peer: fromId.slice(0, 16), claimed: msg.body_sha256.slice(0, 12), actual: localDigest.slice(0, 12) },
+        '[p2p] 摘要与本地重算不一致',
+      );
+    }
+    await storeSnapshot(safePayload, 'p2p', db);
     logger.info(
       {
         peer: fromId.slice(0, 16),

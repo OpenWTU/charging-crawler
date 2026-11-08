@@ -473,6 +473,7 @@ export async function workerRound(
 export function startWorker(
   callImpl: Call = callPlatform,
   db: Db = getDb(),
+  // L2：允许 settings 覆盖（后台「worker 间隔」原来是死配置，改了没效果）
   intervalMs = WORKER_INTERVAL * 1000,
 ): () => Promise<void> {
   let stopped = false;
@@ -480,6 +481,13 @@ export function startWorker(
   // 跟踪「当前正在跑的那一轮」（不能只记第一轮，否则 stop 等不到后续轮次）
   const state: { current: Promise<void> } = { current: Promise.resolve() };
   const tick = async (): Promise<void> => {
+      // L2：每轮从 app_settings 重新取间隔（后台改完下一轮生效，不用重启）
+      let effectiveIntervalMs = intervalMs;
+      try {
+        const { getSetting } = await import('./adminsettings.js');
+        const sec = Number(await getSetting('worker_interval_sec'));
+        if (Number.isFinite(sec) && sec >= 60) effectiveIntervalMs = sec * 1000;
+      } catch { /* 用默认 */ }
     if (stopped) return;
     state.current = (async () => {
       try {
@@ -493,7 +501,7 @@ export function startWorker(
     } catch {
       /* 上面已记日志 */
     }
-    if (!stopped) setTimeout(tick, intervalMs).unref?.();
+    if (!stopped) setTimeout(tick, effectiveIntervalMs).unref?.();
   };
   // 启动后立即跑一轮（与 Python start_worker 一致）
   void tick();

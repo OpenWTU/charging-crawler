@@ -63,11 +63,6 @@ export const VERSION_FILE = env(
 /** 令牌加密主密钥文件（与 Python 版共用同一个文件） */
 export const TOKEN_KEY_FILE = env('TOKEN_KEY_FILE', '/var/lib/charge-cloud/token_key');
 
-export const ADMIN_COOKIE = 'charge_admin';
-export const ADMIN_SESSION_TTL = envInt('ADMIN_SESSION_TTL', 12 * 3600);
-export const ADMIN_SESSION_MAX = envInt('ADMIN_SESSION_MAX', 24 * 3600);
-export const ADMIN_LOGIN_WINDOW = envInt('ADMIN_LOGIN_WINDOW', 300);
-export const ADMIN_LOGIN_MAX_FAILS = envInt('ADMIN_LOGIN_MAX_FAILS', 5);
 
 /* ---------------- 业务参数（与 Python 版一致） ---------------- */
 
@@ -75,10 +70,7 @@ export const PORT_STATUS_MAX = 16;
 export const PORT_RE = /^[0-9A-Za-z_-]{1,8}$/;
 
 export const CONTROLLERS_LIMIT = 500;
-export const CONTROLLERS_CACHE_TTL = 30;
 export const AREAS_PORTS_LIMIT = 500;
-export const AREAS_PORTS_CACHE_TTL = 30;
-export const AREA_PORTS_CACHE_TTL = 30;
 export const AREA_PORTS_DEVICE_LIMIT = 500;
 export const PILE_HISTORY_LIMIT = 120;
 
@@ -88,7 +80,6 @@ export const TOKEN_LONG_LIVED_SECONDS = 1800;
 /** worker 定时抓取周期（秒）；健康判定的「过期」阈值 = 它 + 300 秒余量 */
 export const WORKER_INTERVAL = 600;
 export const HEALTH_STALE_SECONDS = WORKER_INTERVAL + 300;
-export const HEALTH_CACHE_TTL = 30;
 
 /* ---------------- /api/now 到达预测（与 Python 版一致） ---------------- */
 
@@ -110,11 +101,8 @@ export const ANALYTICS_SLOT_MINUTES = 15;
 export const ANALYTICS_TREND_SLOTS = 96;
 export const ANALYTICS_TREND_DAYS = 7;
 export const ANALYTICS_TZ = env('ANALYTICS_TZ', 'Asia/Shanghai');
-export const ANALYTICS_MISS_LIMIT = 30;
 
-export const PORT_SYNC_INTERVAL = 0.25;
 export const PORT_STALE_SECONDS = 900;
-export const PORT_REFRESH_COOLDOWN = 60;
 
 /* ---------------- P2P（默认开启） ---------------- */
 

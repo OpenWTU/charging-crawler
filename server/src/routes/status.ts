@@ -21,7 +21,15 @@ import { getDb } from '../db/index.js';
 import { p2pPeers, p2pSelfAddrs, p2pSelfId, p2pSelfName, p2pWhitelistCount } from '../domain/p2p.js';
 
 export async function registerStatusRoutes(app: FastifyInstance): Promise<void> {
+  // M5：/status 每次 3 个全表 COUNT(*) + 全表拉 token 池，同步执行；
+  // 公开状态页会轮询，表长大后随轮询线性变慢。加 30 秒缓存。
+  let statusCache: { at: number; body: unknown } | null = null;
+  const STATUS_TTL_MS = 30_000;
+
   app.get('/status', async (_req, reply) => {
+    if (statusCache && Date.now() - statusCache.at < STATUS_TTL_MS) {
+      return reply.header('X-Cache', 'hit').send(statusCache.body);
+    }
     const pool = await tokenPoolStats();
     const worker = getWorkerState();
     const banned = banlistStats();
@@ -56,7 +64,7 @@ export async function registerStatusRoutes(app: FastifyInstance): Promise<void> 
       dbSize = 0;
     }
 
-    return reply.send({
+    const statusBody = {
       ok: true,
       server_time: nowStr(),
       node: 'node',
@@ -108,6 +116,10 @@ export async function registerStatusRoutes(app: FastifyInstance): Promise<void> 
         devices: banned.devices,
         ips: banned.ips,
       },
-    });
+    }
+
+    statusCache = { at: Date.now(), body: statusBody };
+
+    return statusBody;
   });
 }
