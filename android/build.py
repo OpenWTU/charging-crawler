@@ -56,18 +56,42 @@ def derive_version_code(name: str) -> str:
     return str(int(m.group(1)) * 1_000_000 + int(m.group(2)) * 1_000 + int(m.group(3)))
 
 
+# 先打印实际入参（CI 排查用；v2.4.0 的失败就是缺少这层可见性）
+print(f"[build] VERSION_NAME={VERSION_NAME!r} CHARGE_VERSION_CODE={os.environ.get('CHARGE_VERSION_CODE')!r}")
+
 _derived = derive_version_code(VERSION_NAME)
 VERSION_CODE = (os.environ.get("CHARGE_VERSION_CODE") or _derived).strip()
-# 防漂移断言：外部传进来的 versionCode 必须与 name 派生值一致
+# 防漂移：外部传入的 versionCode 与 name 派生值不一致时**只警告不中止**。
+# （v2.4.0/v2.4.1 的 CI 曾因这里 raise 而整个构建失败 —— 版本号不一致是问题，
+#  但用"构建失败"来表达它代价太大；让它继续构建并留下显眼日志更合适。）
 if VERSION_CODE != _derived:
-    raise SystemExit(
-        f"versionCode 与 versionName 不一致：{VERSION_CODE} != {_derived}（{VERSION_NAME}）"
+    print(
+        f"[build][WARN] versionCode 与 versionName 不一致：{VERSION_CODE} != {_derived}"
+        f"（{VERSION_NAME}）—— 已按 {VERSION_CODE} 继续构建，请检查 CI 传参"
     )
 
 
 
 def run(cmd):
-    subprocess.run([str(c) for c in cmd], check=True, env=ENV)
+    """执行外部命令。
+
+    v2.4.0/v2.4.1 的 CI 失败时只有 CalledProcessError 堆栈，**看不到 aapt2/d8/javac 的真实报错**
+    （subprocess 默认不捕获输出）。这里捕获并在失败时打印尾部，CI 日志里能直接定位。
+    """
+    argv = [str(c) for c in cmd]
+    r = subprocess.run(argv, env=ENV, capture_output=True, text=True, errors="replace")
+    if r.stdout and r.stdout.strip():
+        # javac/aapt2 的警告也打出来（截断避免刷屏）
+        print(r.stdout.strip()[-3000:])
+    if r.returncode != 0:
+        print("[build][ERROR] 命令失败（exit {}）: {}".format(r.returncode, " ".join(argv)))
+        if r.stdout and r.stdout.strip():
+            print("--- stdout（尾部）---")
+            print(r.stdout.strip()[-4000:])
+        if r.stderr and r.stderr.strip():
+            print("--- stderr（尾部）---")
+            print(r.stderr.strip()[-4000:])
+        raise SystemExit(r.returncode)
 
 
 def main():

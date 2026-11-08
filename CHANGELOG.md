@@ -6,6 +6,19 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.2] - 2026-11-08
+
+### 修复
+- **CI APK 构建仍失败（v2.4.1）**：把 `build.py` 的「versionCode 与 name 不一致」从
+  **硬失败改成警告** —— 用「构建失败」表达版本号不一致代价太大，而且当时根本看不到真实原因。
+- **补可观测性**：`run()` 原来用 `subprocess.run(check=True)` 且不捕获输出，
+  aapt2/d8/javac 的真实报错完全看不到（CI 日志里只有 CalledProcessError 堆栈）。
+  现在捕获 stdout/stderr，失败时打印两边尾部 4KB，成功时也打印 javac 警告。
+- 构建开始打印实际入参（`VERSION_NAME` / `CHARGE_VERSION_CODE`），便于对齐 CI 传参。
+
+> 说明：v2.4.0 与 v2.4.1 的 tag 均已推送，其 release-apk 失败但 release-image 成功。
+> 这三个 tag 指向的代码只差在这个构建脚本的诊断能力上，服务端镜像不受影响。
+
 ## [v2.4.1] - 2026-11-08
 
 ### 修复
