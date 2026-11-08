@@ -190,6 +190,51 @@ export async function registerAdminOpsRoutes(scope: FastifyInstance): Promise<vo
   });
 
   /** 某节点的互校判定明细 */
+  /**
+   * 设备可信度：把 `p2p_validation` 里 `dev:` 前缀的记录按设备汇总。
+   *
+   * App 上传会在入库前与本节点 ±10 分钟的历史快照比对（p2pvalidate.validateIncoming，
+   * warn 语义：只标记不丢），判定写进 p2p_validation，peer_id 用 `dev:<device_id>` 前缀
+   * 与 P2P 节点区分。这里把它按设备聚合，后台就能看出哪台在报偏离历史很远的数据。
+   */
+  scope.get('/admin/api/device-credibility', async () => {
+    const db = getDb();
+    const res = await sql<{
+      peer_id: string;
+      pass: number;
+      suspect: number;
+      drop: number;
+      total: number;
+      avg_dev: number | null;
+      last_ts: string | null;
+    }>`
+      SELECT peer_id,
+             SUM(CASE WHEN decision = 'accept'  THEN 1 ELSE 0 END) AS pass,
+             SUM(CASE WHEN decision = 'suspect' THEN 1 ELSE 0 END) AS suspect,
+             SUM(CASE WHEN decision = 'drop'    THEN 1 ELSE 0 END) AS drop,
+             COUNT(*) AS total,
+             AVG(deviation) AS avg_dev,
+             MAX(ts) AS last_ts
+        FROM p2p_validation
+       WHERE peer_id LIKE 'dev:%'
+       GROUP BY peer_id
+       ORDER BY suspect DESC, total DESC
+       LIMIT 200
+    `.execute(db);
+    return {
+      ok: true,
+      devices: res.rows.map((r) => ({
+        device_id: String(r.peer_id).replace(/^dev:/, ''),
+        pass: Number(r.pass),
+        suspect: Number(r.suspect),
+        drop: Number(r.drop),
+        total: Number(r.total),
+        avg_deviation: r.avg_dev === null ? null : Math.round(Number(r.avg_dev) * 1000) / 1000,
+        last_ts: r.last_ts,
+      })),
+    };
+  });
+
   scope.get('/admin/api/nodes/:peerId/validation', async (req) => {
     const peerId = String((req.params as { peerId?: string }).peerId ?? '');
     const limit = Math.min(Number((req.query as { limit?: string }).limit) || 50, 200);

@@ -1,5 +1,6 @@
 package com.test19124.charging.web;
 
+import android.os.Build;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
@@ -74,6 +75,23 @@ public final class AppWebShell {
         s.setAllowContentAccess(false);
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
+        // 深色模式：WebView 默认**不响应**系统的 prefers-color-scheme，前端的
+        // `@media (prefers-color-scheme: dark)` 会永远返回 false —— 表现就是
+        // 「设置里选跟随系统、手机开暗色，页面还是亮色」。必须显式开启：
+        //   API 33+ → setAlgorithmicDarkeningAllowed（forceDark 在 33 起已废弃）
+        //   API 29~32 → setForceDark(FORCE_DARK_AUTO)
+        // 两者语义都是「跟随系统」：网页自己支持 prefers-color-scheme 就尊重它，
+        // 不支持才由 WebView 做算法反色。
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                s.setAlgorithmicDarkeningAllowed(true);
+            } else if (Build.VERSION.SDK_INT >= 29) {
+                //noinspection deprecation
+                s.setForceDark(WebSettings.FORCE_DARK_AUTO);
+            }
+        } catch (Throwable ignored) {
+            // 个别定制 ROM 的 WebView 实现可能不认这两个方法，保持默认（跟随不了即为亮色）
+        }
         w.setBackgroundColor(Color.parseColor("#f3f5f9"));
         if ((a.getApplicationInfo().flags
                 & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) {

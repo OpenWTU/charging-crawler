@@ -7,7 +7,7 @@
  *  - 主题变化后 <meta name="theme-color"> 内的浏览器配色随之同步；
  *    App 内再经 JS 桥通知原生同步系统状态栏（WebView 不认 theme-color）。
  */
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { isApp, setDarkMode } from '../api/index.js';
 
 const THEME_KEY = 'charge_theme';
@@ -94,6 +94,9 @@ export function useTheme(onChange) {
     nextTick(() => { if (typeof onChange === 'function') onChange(); });
   }, { immediate: true });
 
+  // 2026-11-08 修：watchSystem() 原来**只定义、从不调用** —— 初始值靠 readSystemDark()
+  // 拿到一次之后，系统切深浅色不会再触发任何更新，「跟随系统」等于只在冷启动时生效一次。
+  onMounted(watchSystem);
   onUnmounted(unwatchSystem);
 
   return {

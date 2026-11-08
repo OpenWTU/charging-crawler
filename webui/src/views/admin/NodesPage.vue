@@ -63,6 +63,43 @@
       </table>
     </section>
 
+    <!-- 设备可信度（App 上传的合理性判定） -->
+    <section class="a-panel">
+      <div class="a-head">
+        <h2>设备可信度（{{ devices.length }}）</h2>
+        <span class="a-muted a-small">App 上传时与本节点 ±10 分钟历史快照比对；偏差超阈值的记为可疑（仍入库，只打 _suspect 标记）</span>
+      </div>
+      <table v-if="devices.length" class="a-tbl">
+        <thead>
+          <tr>
+            <th>设备</th>
+            <th class="num">通过</th>
+            <th class="num">可疑</th>
+            <th class="num">总数</th>
+            <th class="num">平均偏差</th>
+            <th>最近判定</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="d in devices" :key="d.device_id">
+            <td class="a-mono a-small wrap">{{ (d.device_id || '').slice(0, 20) }}…</td>
+            <td class="num">{{ d.pass }}</td>
+            <td class="num">
+              <span v-if="d.suspect" class="a-tag warn">{{ d.suspect }}</span>
+              <span v-else class="a-muted">0</span>
+            </td>
+            <td class="num">{{ d.total }}</td>
+            <td class="num">{{ d.avg_deviation === null ? '—' : d.avg_deviation }}</td>
+            <td class="a-small">{{ d.last_ts || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="a-muted a-small" style="padding:12px">
+        暂无记录。设备上传时若能在 ±10 分钟内找到本节点的历史快照，就会产生一条判定；
+        连续两次上传间隔超过 10 分钟会被判为「无基准」而不记录。
+      </p>
+    </section>
+
     <!-- 白名单管理 -->
     <section class="a-panel a-pad">
       <h2 class="a-small">白名单（本地覆盖层）</h2>
@@ -142,6 +179,7 @@ import { apiDelete, apiGet, apiFetch, apiPost } from '../../api/adminApi.js';
 const error = ref('');
 const policy = ref({});
 const peers = ref([]);
+const devices = ref([]);
 const whitelist = ref({ github: [], local: [] });
 const validation = ref(null);
 const form = reactive({ peerId: '', addr: '', url: '', name: '' });
@@ -154,6 +192,13 @@ async function load() {
     policy.value = d.policy || {};
     peers.value = d.peers || [];
     whitelist.value = d.whitelist || { github: [], local: [] };
+    // 设备可信度单独一个接口：失败不该连累上面的节点信息
+    try {
+      const c = await apiGet('/admin/api/device-credibility');
+      devices.value = c.devices || [];
+    } catch {
+      devices.value = [];
+    }
   } catch (e) {
     error.value = e.message || '加载失败';
   }

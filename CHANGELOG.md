@@ -6,7 +6,51 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
-## [v2.4.19] - 2026-11-08
+## [v2.4.20] - 2026-11-08
+
+### 修复：暗色模式不跟随系统（两个 bug 叠加）
+用户反馈「设置里选跟随系统、手机开暗色，页面还是亮的」。查出**两个独立原因**：
+
+**① Android WebView 默认不响应 `prefers-color-scheme`**
+
+`AppWebShell` 的 `WebSettings` 只配了 JS/DOM/视口，**没开深色模式支持** ——
+WebView 里 `window.matchMedia('(prefers-color-scheme: dark)')` **永远返回 false**，
+前端的所有深色逻辑因此全部失效。修复：
+
+```java
+if (Build.VERSION.SDK_INT >= 33) {
+    s.setAlgorithmicDarkeningAllowed(true);   // Android 13+（forceDark 在 33 起废弃）
+} else if (Build.VERSION.SDK_INT >= 29) {
+    s.setForceDark(WebSettings.FORCE_DARK_AUTO);  // Android 10~12
+}
+```
+
+**② `watchSystem()` 只定义、从不调用**
+
+`useTheme.js` 里 `watchSystem` / `unwatchSystem` 都写好了，但只有
+`onUnmounted(unwatchSystem)` —— **没有 `onMounted(watchSystem)`**。
+于是「跟随系统」只在冷启动时读一次，之后手机切深浅色**不会触发任何更新**。补上 `onMounted(watchSystem)`。
+
+**实测**（CDP 模拟 `prefers-color-scheme`）：
+
+| 场景 | 结果 |
+|---|---|
+| 网页访问，系统 dark | `theme-dark:true`，body `rgb(15,23,42)` |
+| 网页访问，运行中切 light（不刷新） | `theme-dark:false`，body `rgb(243,245,249)` |
+| App 内默认（无手动设置），系统 dark | `theme-dark:true` |
+| App 内运行中切 light（不刷新） | 立即变亮 |
+| App 内手动选「明亮」，系统 dark | 保持亮色（手动优先） |
+| App 内手动选「深色」，系统 light | 保持深色（手动优先） |
+| App 内改回「跟随系统」，系统 dark | 回到深色 |
+
+### 新增：管理后台「节点网络」页显示设备可信度
+新增 `GET /admin/api/device-credibility`：把 `p2p_validation` 里 `dev:` 前缀的记录
+按设备聚合（通过 / 可疑 / 总数 / 平均偏差 / 最近判定），按可疑数降序。
+前端在「节点网络」页节点表下方加了对应表格，空态有说明文案。
+
+这样不用查库就能看出**哪台设备在报偏离本地历史很远的数据**。
+
+
 
 ### 删掉 `REGISTER_TOKEN`：它和 UA 一样，没有安全价值
 v2.4.18 刚加的注册令牌门禁，本轮撤掉。理由（用户点破的）：
