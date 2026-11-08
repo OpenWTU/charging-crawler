@@ -225,7 +225,13 @@ export async function serverRefreshOnce(
     const { valid, skipped } = await splitValidAreas(uniqueByName([...collected.values()]), db);
     for (const [id, a] of collected) if (!valid.some((v) => v.name === a.name)) collected.delete(id);
     for (const [name, reason] of skipped) skippedMap.set(name, reason);
-    for (const a of attemptFailed) failed.set(String(a.id), String(a.areaName ?? a.id));
+    // M14：原实现把 attemptFailed 整体写回 failed，但成功时会 failed.delete(aid)，
+    // 于是已成功的区域又被塞回来 → 下一个 token 重抓、fail:N 虚高、误触 worker_fail 告警。
+    // 只补「本轮尝试过但仍不在 failed 里、且确实没成功采集」的区域。
+    for (const a of attemptFailed) {
+      const aid = String(a.id);
+      if (!collected.has(aid) && !failed.has(aid)) failed.set(aid, String(a.areaName ?? aid));
+    }
     retryIds = new Set(failed.keys());
     if (!retryIds.size) break;
     last = `fail:${retryIds.size}`;

@@ -13,6 +13,7 @@ import { haversineM, parseCoord } from '../domain/geo.js';
 import { healthStats, tokenPoolStats } from '../domain/health.js';
 import { areaPortGroupCounts, areaPortState } from '../domain/ports.js';
 import { fmtDateTime, predictionFields, predictionStats } from '../domain/prediction.js';
+import { rateOk } from '../domain/ratelimit.js';
 
 interface SnapshotArea {
   name?: string;
@@ -111,6 +112,11 @@ export interface NowItem {
  * /api/now：当前空闲 + 增量 + 距离/评分 + 到达预测。
  * 与 cloud/http/api_state.py::_route_now 逐字段一致。
  */
+/** S1：/api/now 是公开接口且每次要跑 14 天双聚合（实测 0.19–0.49s，同步阻塞事件循环），
+ * 任何人循环 GET 就能让上传/worker/P2P 一起停摆。这里加 60 秒内存缓存 + 按 IP 限流。 */
+const NOW_TTL_MS = 60_000;
+let nowCache: { at: number; key: string; body: unknown } | null = null;
+
 export async function nowPayload(
   latRaw: unknown,
   lngRaw: unknown,
@@ -243,9 +249,21 @@ export async function registerStateRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/now', async (req, reply) => {
+    // S1：限流 + 缓存（公开接口，避免被当作 DoS 入口）
+    if (!rateOk(req.ip, 'now', 20, 60)) {
+      return reply.code(429).send({ ok: false, error: '请求过于频繁，请稍后再试' });
+    }
+    const cacheKey = `${(req.query as { lat?: string }).lat ?? ''}|${(req.query as { lng?: string }).lng ?? ''}|${(req.query as { radius?: string }).radius ?? ''}`;
+    if (nowCache && nowCache.key === cacheKey && Date.now() - nowCache.at < NOW_TTL_MS) {
+      return reply.header('X-Cache', 'hit').send(nowCache.body);
+    }
+
     const q = (req.query ?? {}) as Record<string, unknown>;
     try {
-      return reply.send(await nowPayload(q.lat, q.lng));
+      const body = await nowPayload(q.lat, q.lng);
+      // S1：写入 60 秒缓存（同一量化 key 的后续请求直接命中）
+      nowCache = { at: Date.now(), key: cacheKey, body };
+      return reply.send(body);
     } catch (err) {
       app.log.error({ err }, '/api/now 失败');
       return reply.code(500).send({ ok: false, error: 'internal_error' });

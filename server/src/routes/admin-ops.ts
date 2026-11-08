@@ -92,7 +92,8 @@ export async function registerAdminOpsRoutes(scope: FastifyInstance): Promise<vo
   }
 
   scope.post('/admin/api/nodes/whitelist', async (req, reply) => {
-    if (!requireRole(req, reply, 'ops')) return undefined;
+    // M7：与 admin.ts 的 SUPER_ONLY 对齐 —— 白名单等于数据源，必须 super
+    if (!requireRole(req, reply, 'super')) return undefined;
     const admin = adminOf(req);
     const body = readBody<{ peerId?: unknown; addr?: unknown; url?: unknown; name?: unknown }>(req);
     const peerId = String(body.peerId ?? '').trim();
@@ -115,7 +116,7 @@ export async function registerAdminOpsRoutes(scope: FastifyInstance): Promise<vo
   });
 
   scope.delete('/admin/api/nodes/whitelist/:peerId', async (req, reply) => {
-    if (!requireRole(req, reply, 'ops')) return undefined;
+    if (!requireRole(req, reply, 'super')) return undefined;
     const admin = adminOf(req);
     const peerId = String((req.params as { peerId?: string }).peerId ?? '');
     const settings = await readSettings();
@@ -134,7 +135,7 @@ export async function registerAdminOpsRoutes(scope: FastifyInstance): Promise<vo
   });
 
   scope.patch('/admin/api/nodes/policy', async (req, reply) => {
-    if (!requireRole(req, reply, 'ops')) return undefined;
+    if (!requireRole(req, reply, 'super')) return undefined;
     const admin = adminOf(req);
     const body = readBody<{ trust_non_whitelist?: unknown }>(req);
     const v = body.trust_non_whitelist;

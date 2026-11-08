@@ -107,7 +107,10 @@ export async function splitValidAreas(
   areas: CleanArea[],
   db: Db = getDb(),
 ): Promise<SplitResult> {
-  const knownRes = await sql<{ name: string }>`SELECT name FROM areas`.execute(db);
+  // M2：软删的区域不能再进公开数据（后台删了但 /api/now 还显示过）
+  const knownRes = await sql<{ name: string }>`
+    SELECT name FROM areas WHERE COALESCE(deleted_at, '') = ''
+  `.execute(db);
   const known = new Set(knownRes.rows.map((r) => String(r.name)));
 
   // 首次上传（areas 表为空）会接受任意区名来建立 known 集合——这是初始化必需，

@@ -304,6 +304,15 @@ export async function registerAdminSystemRoutes(scope: FastifyInstance): Promise
     if (SQL_DENY.test(text)) {
       return reply.code(400).send({ ok: false, error: 'SQL 含不允许的关键字' });
     }
+    // M6：/db/rows 拦了敏感表，/db/query 也必须拦（否则 super 一条 SELECT 就把口令哈希拖走）
+    for (const t of SECRET_TABLES) {
+      if (new RegExp(`\\b${t}\\b`, 'i').test(text)) {
+        return reply.code(403).send({
+          ok: false,
+          error: `${t} 含敏感字段（口令哈希/设备密钥），不允许通过 SQL 查询`,
+        });
+      }
+    }
     if (!/\blimit\b/i.test(text)) text = `${text} LIMIT ${MAX_QUERY_ROWS}`;
     const started = Date.now();
     try {

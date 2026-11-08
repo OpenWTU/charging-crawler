@@ -195,12 +195,15 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   /* ===== 公开：登录 / 登出 ===== */
   app.post('/admin/login', async (req, reply) => {
     // L18：登录也要挡一下跨站表单（login-CSRF 能把受害者登到攻击者账号）
+    // L5：原来用 host.startsWith(o.host) 且 host 取客户端可控的 x-forwarded-host，
+    // `Origin: https://evil.com` + `X-Forwarded-Host: evil.com.attacker` 就能通过。
+    // 改成 host:port 精确比较。
     const origin = req.headers.origin;
     if (origin) {
       try {
         const o = new URL(origin);
         const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '');
-        if (host && !host.startsWith(o.host)) {
+        if (host && o.host !== host.split(',')[0]?.trim()) {
           return reply.code(403).send({ ok: false, error: '跨站请求被拒绝' });
         }
       } catch {
