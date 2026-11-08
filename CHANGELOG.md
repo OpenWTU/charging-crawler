@@ -6,6 +6,35 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.15] - 2026-11-08
+
+### 修复：桩归属「永久锁定」导致换设备后数据全被拒
+**线上实测**（2026-11-08 13:32）：`upload_audit` 连续 8 条 `owner_rejected`。
+排查发现 `controllers` 的 **39 个桩 owner 全是同一个设备** `b976ee67…` ——
+它只在 11:36 上报过 1 次（`uploads=1`），但那次 payload 带了全部 39 个桩的 ports，
+按 S2 的「首见登记」规则一次性认领了全部。用户之后重装 App / 换机，
+`device_id` 变成 `5e23ca77…`（`uploads=8`、13:32 仍活跃），于是全被拒。
+
+**根因**：S2 的归属规则是「首见登记 + 永久锁定」，没有任何失活回收机制。
+换设备 = 数据永久写不进去，只能手工改库。
+
+**修复**：加「僵尸 owner 可接管」——归属校验时查原 owner 的 `devices.last_seen`，
+满足任一条件即允许当前设备接管并记 `logger.info`：
+- `last_seen` 距今超过 **7 天**（`OWNER_STALE_MS`）
+- 原 owner 已被软删（`deleted_at` 非空）
+- 原 owner 不在 `devices` 表里（未注册/已清理）
+
+接管用 `UPDATE … WHERE owner_device = <原 owner>` 带条件更新，并发下只有一个能成功。
+
+**同一批线上数据已修**：39 个桩的 `owner_device` 已从 `b976ee67…` 转到 `5e23ca77…`，
+改前做过 `VACUUM INTO` 备份（`/var/lib/charge-cloud/backup-manual/charge-after-owner-fix-*.db`）。
+
+### 另附：worker 报 `no-token` 的原因（非代码问题）
+`token_pool` 共 16 条，其中 **15 条早已过期**（118 ~ 10156 分钟），
+唯一有效的 1 条也在 13:40 到期 —— 12:56 之后没有新的令牌上传，所以 worker 抓不到数据。
+令牌靠 App 端「上传令牌」开关持续上传，属于运维范畴；补抓后立刻恢复
+（实测手动 `/api/refresh` 返回 `areas=ok:39|ports=ok:39/438`）。
+
 ## [v2.4.14] - 2026-11-08
 
 ### 管理后台移动端：配置中心堆叠布局 + 横向滚动提示

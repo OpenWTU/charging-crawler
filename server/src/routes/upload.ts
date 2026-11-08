@@ -39,6 +39,29 @@ import { markUpload, writeUploadAudit, type UploadMeta } from '../domain/uploada
 import { REGISTER_TOKEN } from '../config.js';
 import { logger } from '../logger.js';
 
+/**
+ * 桩归属的「僵尸 owner」阈值：原 owner 超过这么久没上传过，就允许别的设备接管。
+ *
+ * 起因（2026-11-08 线上实测）：一个只上报过 1 次的设备把全部 39 个桩都认领了
+ * （一次上传的 payload 里带了全部桩的 ports），之后用户重装 App / 换机导致
+ * device_id 变化，连续 8 次上传全部 owner_rejected，数据再也写不进去。
+ * 永久锁定太脆弱，加一个「不活跃可接管」的口子。
+ */
+const OWNER_STALE_MS = 7 * 86400_000;
+
+/** 本地时间串（YYYY-MM-DD HH:MM:SS）→ 毫秒时间戳（不走 Date.parse，避免时区歧义） */
+function toEpochLocal(s: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(String(s));
+  if (!m) {
+    const t = Date.parse(String(s));
+    return Number.isFinite(t) ? t : 0;
+  }
+  return new Date(
+    Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+    Number(m[4]), Number(m[5]), Number(m[6]),
+  ).getTime();
+}
+
 /** 常量时间比较 hex 字符串（Python 用 hmac.compare_digest） */
 function hexEqual(a: string, b: string): boolean {
   const ba = Buffer.from(a, 'utf8');
@@ -346,17 +369,56 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
             }
           }
           if (owner && deviceId && owner !== deviceId) {
-            // S2（复审）：跨设备拒绝必须留痕（原来只有一条 logger.warn，后台/客户端都看不到）
-            rejectedDevices.push(item.device_hex);
-            markUpload(req, 'owner_rejected', {
-              deviceId,
-              detail: `device_hex=${item.device_hex} owner=${owner}`,
-            });
-            logger.warn(
-              { device_hex: item.device_hex, owner, attacker: deviceId, ip },
-              '[upload] 跨设备改写桩状态已被拒绝',
-            );
-            continue; // 不写 port_states / controllers.updated_at / pile_samples
+            // S2 的补充（2026-11-08 实测踩到）：原规则是「首见登记 + 永久锁定」，
+            // 一个只上报过 1 次的设备把全部 39 个桩都认领了，之后用户换设备/重装 App
+            // （device_id 变了）就再也写不进去，audit 里连续 owner_rejected。
+            // 这里加「原 owner 长期不活跃则允许接管」：查它的 last_seen，
+            // 超过 OWNER_STALE_MS 没动静就视为已弃用，把归属转给当前设备。
+            let takeover = false;
+            try {
+              const own = await sql<{ last_seen: string | null; deleted_at: string | null }>`
+                SELECT last_seen, deleted_at FROM devices WHERE device_id = ${owner}
+              `.execute(trx);
+              const row = own.rows[0];
+              const lastSeenMs = row?.last_seen ? toEpochLocal(row.last_seen) : 0;
+              const stale = !row || row.deleted_at || !lastSeenMs
+                || Date.now() - lastSeenMs > OWNER_STALE_MS;
+              if (stale) {
+                const took = await sql`
+                  UPDATE controllers SET owner_device = ${deviceId}
+                   WHERE device_hex = ${item.device_hex} AND owner_device = ${owner}
+                `.execute(trx);
+                if (Number(took.numAffectedRows ?? 0) > 0) {
+                  takeover = true;
+                  owner = deviceId;
+                  ownerMap.set(item.device_hex, deviceId);
+                  logger.info(
+                    {
+                      device_hex: item.device_hex,
+                      old_owner: owner,
+                      new_owner: deviceId,
+                      old_last_seen: row?.last_seen ?? null,
+                    },
+                    '[upload] 原 owner 长期不活跃，归属已转移',
+                  );
+                }
+              }
+            } catch (e) {
+              logger.warn({ err: e }, '[upload] 检查 owner 活跃度失败，按原规则拒绝');
+            }
+            if (!takeover) {
+              // S2（复审）：跨设备拒绝必须留痕（原来只有一条 logger.warn，后台/客户端都看不到）
+              rejectedDevices.push(item.device_hex);
+              markUpload(req, 'owner_rejected', {
+                deviceId,
+                detail: `device_hex=${item.device_hex} owner=${owner}`,
+              });
+              logger.warn(
+                { device_hex: item.device_hex, owner, attacker: deviceId, ip },
+                '[upload] 跨设备改写桩状态已被拒绝',
+              );
+              continue; // 不写 port_states / controllers.updated_at / pile_samples
+            }
           }
           for (const p of item.ports) {
             await trx
