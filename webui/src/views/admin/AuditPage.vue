@@ -3,7 +3,7 @@
     <div class="a-toolbar">
       <button
 v-for="t in tabs" :key="t.key" class="a-btn sm" :class="{ primary: tab === t.key }"
-              @click="tab = t.key">
+              @click="switchTab(t.key)">
 {{ t.label }}
 </button>
       <span class="a-spacer" />
