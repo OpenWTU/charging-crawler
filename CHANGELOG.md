@@ -6,6 +6,41 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.7] - 2026-11-08
+
+### 修复（终审后清零，两位审查员报的每一项都修完）
+**后端**
+- S1 去重被改成死代码（比较含 ports、入库不含）→ 入库统一用同一 digest
+- S1-② 摘要对 ports 数组顺序敏感 → 哈希前规范化排序
+- S1-③ 双引号表名绕过（`select * from "admin_users"` 实测 200 且带 scrypt 哈希）→ 只剥单引号
+- M7-② 列级正则写成 `\b`（永不命中）→ 改 ``
+- M12 清理 SQL 列名全错（created_at/changed_at/updated_at → ts/ts/last_at）→ 修正
+- M2 上传路径没失效 /api/now 缓存 → 落库后调 invalidateNowCache()
+- M1 /api/refresh：补 refreshBusy 互斥、ok 改用 roundOk、finally 释放
+- M8 IP 桶改为只在「用户名不存在」时计数（防枚举，不再可锁死全站管理员）
+- M5 `_suspect` 加入摘要排除列表；S4 改名不再丢坐标；L-b/L-e 补齐
+- L1 duplicates 超限 409；L5 startWorker 尊重显式 intervalMs；L6 sweepPeerMeta 时区；
+  L-c 审计 result 区分 partial；L-d 撞软删区域文案
+- A/E：`db/rows` 对 devices 剔除 secret_enc；`db/query` 列级拦截
+
+**前端**
+- S6（我引入的回归）ConfigPage 只解构 isSuper → 超管看不到任何保存按钮 → 修
+- S1 KeepAlive 让 17 页只加载一次（配置中心能覆盖别人刚改的值）→ 封装 `usePageLoad`
+  （同时挂 onMounted + onActivated 去重），13 个页面统一
+- S2 日志页 5s 轮询切走后照跑 → onActivated/onDeactivated
+- M1 冷启动误报「会话已过期」→ apiFetch 真正实现 silent
+- M2 质量页跳转死链 → emit('go')；M3 reachedEnd 重置；M5/M9-b 门控补齐
+- M6 配置中心 viewer 仍见保存 → canWrite；M7 抽屉 role；M8 .topbar 死代码
+- L11 文案分流；L12 草稿保护；L14 usePageLoad；L15 死样式；L1/L3 CSS 响应式
+
+### 新增回归测试
+`server/test/regression-r6.test.ts`（10 条）钉住：去重命中、端口变化不算重复、
+`"admin_users"` 403、`secret_enc`/`pass_hash` 403、字面量不误杀、workerRound 清理可执行。
+
+### 验证
+typecheck 0 / **94 测试全过** / webui lint 0 / build 通过 / APK 461 KB / CDP 逐页 0 console 错误。
+两位审查员终审结论均为「可以部署」。
+
 ## [v2.4.6] - 2026-11-08
 
 ### 修复
