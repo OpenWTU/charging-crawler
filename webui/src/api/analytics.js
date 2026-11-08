@@ -25,7 +25,7 @@ export async function getAnalytics() {
     const host = window.AndroidHost;
     if (host && typeof host.getAnalytics === 'function') {
       const seq = ++analyticsSeq;
-      const r = await awaitGlobalBridge('__onAnalytics', () => host.getAnalytics(), 20000);
+      const r = await awaitGlobalBridge('__onAnalytics', () => host.getAnalytics(), 26000);
       // 序号过期说明有更新的一次请求在飞，这里返回 null 让调用方忽略，
       // 不能用空数据覆盖已有结果（会让分析页闪成「暂无数据」）
       if (seq !== analyticsSeq) return null;
@@ -45,7 +45,7 @@ export async function getFreeRate(days = 14) {
   const host = isApp ? window.AndroidHost : null;
   if (host && typeof host.getFreeRate === 'function') {
     try {
-      const d = await callBridgeJSON('__onFreeRate', () => host.getFreeRate(n), 8000);
+      const d = await callBridgeJSON('__onFreeRate', () => host.getFreeRate(n), 23000);
       if (d && d.ok !== false) return d;
     } catch { /* 桥未实现/失败：回退 HTTP */ }
   }

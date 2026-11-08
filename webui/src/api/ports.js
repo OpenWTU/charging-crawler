@@ -171,7 +171,7 @@ export async function getAreaPorts(name) {
     const host = window.AndroidHost;
     if (host && typeof host.getAreaPorts === 'function') {
       const seq = ++portsSeq;
-      const r = await awaitGlobalBridge('__onAreaPorts', () => host.getAreaPorts(name), 30000);
+      const r = await awaitGlobalBridge('__onAreaPorts', () => host.getAreaPorts(name), 26000);
       if (seq !== portsSeq) throw new Error('端口数据请求已失效');
       let d = null;
       if (!r.threw && typeof r.raw === 'string') {
@@ -194,7 +194,7 @@ export async function getPile(device) {
   const host = isApp ? window.AndroidHost : null;
   if (host && typeof host.getPile === 'function') {
     try {
-      const d = await callBridgeJSON('__onPile', () => host.getPile(hex), 8000);
+      const d = await callBridgeJSON('__onPile', () => host.getPile(hex), 23000);
       if (d && d.ok !== false) return withPileGroups(d);
     } catch { /* 桥未实现/失败：回退 HTTP */ }
   }

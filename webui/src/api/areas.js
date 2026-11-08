@@ -6,6 +6,9 @@
  *  - 桥方法缺失/抛错/超时 → 回退 HTTP 或返回空兜底，绝不抛给点击处理；
  *  - 失败语义与旧实现完全一致（哪个能忍、哪个必须抛错，见各函数注释）。
  */
+// M1：桥超时必须 ≥ 原生最坏耗时（connect 8s + read 12/15s = 20/23s）+ 3s 余量。
+// 原来 8-20s 普遍短于原生最坏值 —— 弱网下 JS 先超时、原生稍后才成功，回调已被丢弃，
+// 用户看到「加载失败」但数据其实拿到了。WebView 里没有可用的回退路径。
 import {
   isApp, getJSON, requestJSON, isObj, numOrNull, coordsQuery,
   awaitGlobalBridge, callBridgeJSON,
@@ -72,14 +75,14 @@ export async function getNow(lat, lng) {
   }
   const host = window.AndroidHost;
   if (qs && host && typeof host.getNowWithCoords === 'function') {
-    const r = await awaitGlobalBridge('__onNow', () => host.getNowWithCoords(Number(lat), Number(lng)), 8000);
+    const r = await awaitGlobalBridge('__onNow', () => host.getNowWithCoords(Number(lat), Number(lng)), 23000);
     if (!r.threw) {
       const d = parseNow(r.raw);
       if (d) return d;
     }
   }
   if (host && typeof host.getNow === 'function') {
-    const r = await awaitGlobalBridge('__onNow', () => host.getNow(), 8000);
+    const r = await awaitGlobalBridge('__onNow', () => host.getNow(), 23000);
     if (!r.threw) {
       const d = parseNow(r.raw);
       if (d) return d;
@@ -99,12 +102,16 @@ export async function getHistory(name, limit) {
   if (isApp) {
     const host = window.AndroidHost;
     if (!host || typeof host.getHistory !== 'function') return []; // 老版本 APK 没有这个桥
-    const d = await callBridgeJSON('__onHistory', () => host.getHistory(raw, n), 20000);
+    const d = await callBridgeJSON('__onHistory', () => host.getHistory(raw, n), 26000);
+    // M2：桥回 {"ok":false,"error":...} 要抛错 —— 否则历史页把云端 500/令牌失效
+    // 显示成「这个区域还没有历史采样 · 抓几次就会有了」（把故障说成数据不足）
+    if (d && d.ok === false) throw new Error(d.error || '历史数据加载失败');
     return Array.isArray(d && d.rows) ? d.rows : [];
   }
 
   const area = encodeURIComponent(raw);
   const d = await getJSON('/api/history?limit=' + n + '&area=' + area);
+  if (d && d.ok === false) throw new Error(d.error || '历史数据加载失败');
   return Array.isArray(d && d.rows) ? d.rows : [];
 }
 
@@ -210,7 +217,7 @@ export async function getAreasPorts() {
   const host = window.AndroidHost;
   if (!host || typeof host.getAreasPorts !== 'function') return { areas: [] };
   const seq = ++areasPortsSeq;
-  const r = await awaitGlobalBridge('__onAreasPorts', () => host.getAreasPorts(), 15000);
+  const r = await awaitGlobalBridge('__onAreasPorts', () => host.getAreasPorts(), 23000);
   if (seq !== areasPortsSeq) throw new Error('端口数据请求已失效');
   let d = null;
   if (!r.threw && typeof r.raw === 'string') {
@@ -247,7 +254,7 @@ export async function getAreaCoords() {
     const host = window.AndroidHost;
     if (!host || typeof host.getAreaCoords !== 'function') return { areas: [] };
     // 同步返回值里已有坐标就不再等异步回调（旧实现同语义）
-    const r = await awaitGlobalBridge('__onAreaCoords', () => host.getAreaCoords(), 12000, {
+    const r = await awaitGlobalBridge('__onAreaCoords', () => host.getAreaCoords(), 23000, {
       isSyncHit: (raw) => {
         const d = parseAreas(raw);
         return !!d && Array.isArray(d.areas) && d.areas.length > 0;

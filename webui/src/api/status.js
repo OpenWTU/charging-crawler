@@ -10,7 +10,7 @@ export async function getStatus() {
   if (isApp) {
     const host = window.AndroidHost;
     if (host && typeof host.getStatus === 'function') {
-      const d = await callBridgeJSON('__onStatus', () => host.getStatus(), 15000);
+      const d = await callBridgeJSON('__onStatus', () => host.getStatus(), 23000);
       if (d && d.ok !== false) return d;
     }
     // 桥不存在或失败：回退 HTTP（老 APK 无桥时至少网页能看）
