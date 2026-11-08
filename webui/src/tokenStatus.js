@@ -20,6 +20,8 @@ export const CLEAR_DONE_TEXT = '已清除令牌';
 
 // ---- 模块级共享快照：所有使用方读同一份状态 ----
 const tokenPresent = ref(false);
+/** 有本地令牌但解析失败（SecureState 标 corrupt）：文案要与 App 顶部横幅一致 */
+const corrupt = ref(false);
 const expiresAt = ref(0);
 const readError = ref('');
 const loading = ref(true);
@@ -27,7 +29,7 @@ const nowMs = ref(Date.now());
 // 最近一次成功读取的原始设置：upload_token / diagnose 等字段由设置页只读镜像
 const lastSettings = ref(null);
 
-const hasStored = computed(() => Number(expiresAt.value) > 0);
+const hasStored = computed(() => Number(expiresAt.value) > 0 || corrupt.value);
 // 剩余有效期由 expires_at 本地推算，不依赖原生侧下发的 remaining_seconds
 const remainSeconds = computed(() => {
   const exp = Number(expiresAt.value) || 0;
@@ -41,12 +43,14 @@ const valid = computed(() => !readError.value
   && (!hasStored.value || remainSeconds.value > 0));
 const statusText = computed(() => {
   if (readError.value) return '读取失败';
+  if (corrupt.value) return '已损坏';
   if (valid.value) return '有效';
   return hasStored.value ? '已过期' : '未设置';
 });
 // 两页徽章共用同一套状态 class：is-valid / is-expired / is-empty / is-error
 const statusClass = computed(() => {
   if (readError.value) return 'is-error';
+  if (corrupt.value) return 'is-error';
   if (valid.value) return 'is-valid';
   return hasStored.value ? 'is-expired' : 'is-empty';
 });
@@ -85,6 +89,7 @@ function poll() {
       throw new Error('原生未返回令牌状态');
     }
     tokenPresent.value = !!s.token_present;
+    corrupt.value = s.corrupt === true;
     expiresAt.value = Number(s.expires_at) || 0;
     lastSettings.value = s;
     readError.value = '';

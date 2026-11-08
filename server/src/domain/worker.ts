@@ -496,7 +496,11 @@ export function startWorker(
     stopped = true;
     await Promise.race([
       state.current.catch(() => {}),
-      new Promise<void>((r) => setTimeout(r, 5_000)),
+      // unref：提前返回后别让这个定时器继续拖住事件循环（否则单测/脚本要多等几秒才退出）
+      new Promise<void>((r) => {
+        const t = setTimeout(r, 5_000);
+        t.unref?.();
+      }),
     ]);
   };
 }

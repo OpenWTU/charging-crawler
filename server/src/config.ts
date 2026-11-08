@@ -132,6 +132,17 @@ export const NODE_NAME = env('NODE_NAME', '');
 export const NODE_URL = env('NODE_URL', '');
 /** 本节点公网 P2P 地址（如 /ip4/1.2.3.4/tcp/4001），心跳广播给其他节点用于互连 */
 export const NODE_P2P_ADDR = env('NODE_P2P_ADDR', '');
+
+/**
+ * 是否信任**非白名单节点**共享的数据。
+ *
+ * 默认 `false`：只接受 nodes.json 里已登记节点的快照/心跳，其余节点的包直接丢弃。
+ * 设为 `true`：任何能连上来的 libp2p 节点（含 mDNS 发现的局域网节点）的数据都接受。
+ *
+ * 注意：这只影响「消息是否被采纳」，不影响连接本身——任何节点在任何配置下都能加入
+ * P2P 网络、能被 /status 看到、App 也能手动切过去；区别只是它的数据会不会落库。
+ */
+export const P2P_TRUST_NON_WHITELIST = envBool('P2P_TRUST_NON_WHITELIST', false);
 /**
  * 节点目录 + peerId 白名单（同一份文件，App 与服务器共用）。
  * 用 GitHub contents API（api.github.com 不被 SNI 阻断）。

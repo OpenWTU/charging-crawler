@@ -253,7 +253,10 @@ public final class NodeDiscovery {
                             // 健康检查放后台线程
                             new Thread(() -> {
                                 if (healthy(base)) {
-                                    switchTo(base);
+                                    // mDNS 发现的是局域网节点，不在 nodes.json 白名单里：
+                                    // 只记录、不自动切换（自动切换只允许白名单目录里的节点），
+                                    // 用户可以在状态页手动切过去。
+                                    DebugLog.add("mDNS 发现可用节点（未受信，不自动切换）: " + base);
                                 }
                             }, "mdns-probe").start();
                         }

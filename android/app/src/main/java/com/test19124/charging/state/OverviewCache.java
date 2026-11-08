@@ -26,12 +26,7 @@ public final class OverviewCache {
     }
 
     private static final long FETCH_THROTTLE_MS = 30000;
-    /**
-     * 缓存可合并进 getState 的最长年龄。应略大于 FETCH_THROTTLE_MS：
-     * 太长的话服务器掉线后健康条会继续显示最多 2 分钟的旧令牌状态。
-     */
-    private static final long MERGE_TTL_MS = 40000;
-    /** 最近一次成功拉取的「在线有效期」：超过即视为服务器不可达 */
+    /** 最近一次成功拉取的「在线有效期」：超过即视为服务器不可达（合并缓存也用同一判据） */
     private static final long ONLINE_TTL_MS = 120000;
 
     private final Host host;

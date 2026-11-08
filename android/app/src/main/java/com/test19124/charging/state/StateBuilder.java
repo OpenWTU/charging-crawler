@@ -83,11 +83,8 @@ public final class StateBuilder {
             ApiClient.Jwt jwt = ApiClient.parseJwt(t);
             boolean valid = jwt != null && jwt.expiresAt * 1000 > System.currentTimeMillis();
             token.put("present", valid);
-            if (jwt == null) {
-                // 有 token 但解析失败（被截断/格式不对）：必须标出 corrupt，
-                // 否则前端只看 present=false 会显示「尚未设置令牌」，误导用户以为从没抓过
-                if (t != null && !t.isEmpty()) token.put("corrupt", true);
-            }
+            // corrupt 标记由 SecureState.settingsJson() 负责（前端 loadTokenState 读的是那一条），
+            // 这里不再重复写，避免「两个生产者、一个消费者」
             if (jwt != null) {
                 token.put("expires_at", jwt.expiresAt);
                 token.put("remaining_seconds", Math.max(0, jwt.expiresAt - System.currentTimeMillis() / 1000));

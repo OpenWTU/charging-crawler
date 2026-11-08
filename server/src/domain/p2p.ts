@@ -33,6 +33,7 @@ import {
   P2P_KEY_FILE,
   P2P_LISTEN_PORT,
   P2P_MDNS,
+  P2P_TRUST_NON_WHITELIST,
   P2P_WHITELIST_CACHE,
   P2P_WHITELIST_DEFAULT,
   P2P_WHITELIST_URL,
@@ -75,6 +76,8 @@ export interface P2pPeerInfo {
   name: string | null;
   version: string | null;
   url: string | null;
+  /** 是否在 nodes.json 白名单里（false = 网络上能连到、但数据默认不被采纳的节点） */
+  whitelisted: boolean;
   last_seen: string | null;
   stats: { snapshots: number; areas: number; devices: number; ports: number } | null;
 }
@@ -335,7 +338,8 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
         // 而不是消息内容里自填的 sender（可伪造）
         if (detail.type !== 'signed') return;
         const fromId = detail.from.toString();
-        if (!whitelist.has(fromId)) return;
+        // 白名单外节点：默认丢弃；P2P_TRUST_NON_WHITELIST=true 时也采纳
+        if (!whitelist.has(fromId) && !P2P_TRUST_NON_WHITELIST) return;
         let msg: SnapshotMessage;
         try {
           msg = JSON.parse(new TextDecoder().decode(data));
@@ -366,7 +370,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
         if (topic !== STATUS_TOPIC) return;
         if (detail.type !== 'signed') return;
         const fromId = detail.from.toString();
-        if (!whitelist.has(fromId)) return;
+        if (!whitelist.has(fromId) && !P2P_TRUST_NON_WHITELIST) return;
         let msg: StatusMessage;
         try {
           msg = JSON.parse(new TextDecoder().decode(data));
@@ -395,6 +399,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
           name: meta?.name ?? null,
           version: meta?.version ?? null,
           url: meta?.url || null,
+          whitelisted: whitelist.has(p.toString()),
           last_seen: meta?.last_seen ?? null,
           stats: meta?.stats ?? null,
         };

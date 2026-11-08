@@ -68,6 +68,12 @@
           <div><dt>当前节点 peerId</dt><dd class="mono">{{ short(data.peers?.self) }}</dd></div>
           <div><dt>白名单节点</dt><dd>{{ data.peers?.whitelist ?? 0 }}</dd></div>
           <div><dt>在线节点（含本机）</dt><dd>{{ data.peers?.online_total ?? ((data.peers?.online ?? 0) + 1) }}</dd></div>
+          <div>
+            <dt>非白名单数据</dt>
+            <dd :title="data.peers?.trust_non_whitelist ? 'P2P_TRUST_NON_WHITELIST=true' : 'P2P_TRUST_NON_WHITELIST=false（默认）'">
+              {{ data.peers?.trust_non_whitelist ? '接受' : '丢弃' }}
+            </dd>
+          </div>
         </dl>
         <div v-if="(data.peers?.nodes || []).length" class="peer-list">
           <div
@@ -77,6 +83,11 @@ v-for="n in data.peers.nodes" :key="n.peer_id" class="peer-card"
               <b>{{ n.name || short(n.peer_id) }}</b>
               <span class="tag" :class="n.connected ? 'is-on' : 'is-off'">
                 {{ n.connected ? '在线' : '离线' }}
+              </span>
+              <span
+v-if="n.whitelisted === false" class="tag is-untrusted"
+                    title="不在 nodes.json 白名单：能连上，但它的数据默认不会被采纳">
+                未受信
               </span>
             </div>
             <div class="peer-meta">
@@ -239,6 +250,7 @@ onUnmounted(() => clearInterval(timer));
 .peer-head .tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
 .peer-head .tag.is-on { background: var(--ok-bg, #e8f5e9); color: var(--ok, #2e7d32); }
 .peer-head .tag.is-off { background: var(--neutral-soft-bg, #f0f0f0); color: var(--muted, #888); }
+.peer-head .tag.is-untrusted { background: var(--warn-bg, #fff4e5); color: var(--warn-fg, #b26a00); }
 .peer-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted, #888); }
 .peer-stats { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text, #333); }
 .peer-stats span { background: var(--card, #fff); border-radius: 6px; padding: 3px 8px; }

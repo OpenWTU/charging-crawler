@@ -80,7 +80,7 @@ export function useLiveData(notify) {
         tokenInvalid.value = false;
         tokenUnset.value = false;
       }
-    } catch { /* 读取失败时保持上一次状态 */ }
+    } catch { /* 桥真抛异常时才走到这里；getSettings 自身失败会返回 {}，此时按「无令牌」清空状态 */ }
   }
 
   function clearTokenFlags() {

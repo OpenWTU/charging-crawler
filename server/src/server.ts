@@ -25,6 +25,7 @@ import { registerStaticRoutes } from './routes/static.js';
 import { registerMiscRoutes } from './routes/misc.js';
 import { registerUploadRoutes } from './routes/upload.js';
 import { registerStatusRoutes } from './routes/status.js';
+import { registerAdminRoutes } from './routes/admin.js';
 
 export type App = FastifyInstance;
 
@@ -54,6 +55,8 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
   await registerUploadRoutes(app);
   // 公开状态页 /status（P7，无登录）
   await registerStatusRoutes(app);
+  // 节点后台管理（预留：当前只读 P2P 策略视图，写操作需先加管理员登录）
+  await registerAdminRoutes(app);
 
   // ---- 健康检查（Python 版 /health 的等价实现） ----
   app.get('/health', async (_req, reply) => {

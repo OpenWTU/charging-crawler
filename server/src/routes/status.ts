@@ -16,7 +16,7 @@ import { tokenPoolStats } from '../domain/health.js';
 import { getWorkerState } from '../domain/worker.js';
 import { banlistStats } from '../domain/banlist.js';
 import { nowStr } from '../domain/store.js';
-import { DATABASE_PATH, P2P_ENABLED, SERVER_VERSION } from '../config.js';
+import { DATABASE_PATH, P2P_ENABLED, P2P_TRUST_NON_WHITELIST, SERVER_VERSION } from '../config.js';
 import { getDb } from '../db/index.js';
 import { p2pPeers, p2pSelfAddrs, p2pSelfId, p2pSelfName, p2pWhitelistCount } from '../domain/p2p.js';
 
@@ -99,6 +99,8 @@ export async function registerStatusRoutes(app: FastifyInstance): Promise<void> 
           // 含本机的在线节点数（P2P 启用时 +1，前端据此表述「含本机」）
           online_total: peers.length + (self ? 1 : 0),
           whitelist: p2pWhitelistCount(),
+          // 是否采纳非白名单节点的数据（false = 默认只信白名单，见 P2P_TRUST_NON_WHITELIST）
+          trust_non_whitelist: P2P_TRUST_NON_WHITELIST,
           nodes: peers,
         };
       })(),
