@@ -5,7 +5,13 @@ import { fileURLToPath, URL } from 'node:url';
 // 产物同时供服务器网页与 App WebView 使用
 export default defineConfig({
   plugins: [vue()],
-  base: './',
+  // ★ 必须是绝对路径 '/'，不能用 './'。
+  // 用 './' 时产物里写的是 `./assets/xxx.js`，浏览器按**当前 URL 目录**解析：
+  //   /admin        → /assets/xxx.js        ✓
+  //   /admin/login  → /admin/assets/xxx.js  ✗ 404（首页「管理员」按钮就指向这里 → 白屏）
+  // 绝对路径对 App 也安全：WebView 走 AppWebShell 的 appassets.androidplatform.net，
+  // `/assets/x` 会被 serveAsset 当成 assets/x 读出来，与 './assets/x' 等价。
+  base: '/',
   build: {
     outDir: 'dist',
     emptyOutDir: true,

@@ -6,6 +6,28 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.9] - 2026-11-08
+
+### 紧急修复：首页「管理员」按钮点进去没有登录表单
+**根因**：`vite.config.js` 里 `base: './'`，产物写的是相对路径 `./assets/xxx.js`，浏览器按
+**当前 URL 的目录**解析：
+
+| 访问路径 | `./assets/x` 被解析为 | 结果 |
+|---|---|---|
+| `/admin` | `/assets/x` | 200 ✓ |
+| **`/admin/login`** | **`/admin/assets/x`** | **6 个资源全 404 → 白屏** |
+
+而首页右上角那个「管理员」按钮（`App.vue:20`）指向的正是 `/admin/login`。
+所以「直接输 /admin 正常、点按钮进去白屏」。
+
+**修复**：`base: './'` → `base: '/'`（绝对路径）。
+
+对 App 安全：WebView 走 `AppWebShell` 的 `appassets.androidplatform.net`，
+`/assets/x` 会被 `serveAsset` 当成 `assets/x` 读出来，与 `./assets/x` 等价。
+
+**验证**：本地模拟 `/admin` 与 `/admin/login` 都返回同一份 admin.html —— 两条路径现在都能
+渲染出口令框（1 个）、用户名框与「登录」按钮；ppreviously `/admin/login` 是 6 个资源全 404。
+
 ## [v2.4.8] - 2026-11-08
 
 ### 紧急修复：v2.4.7 的 APK 白屏
