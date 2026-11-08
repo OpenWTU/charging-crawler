@@ -12,7 +12,9 @@ import { PORT_RE, PORT_STATUS_MAX } from '../config.js';
 import { statusGroup, type PortGroup } from './port-status.js';
 import { logger } from '../logger.js';
 
-export const MAX_PORTS_PER_DEVICE = 32;
+// L10：原来是 32，真实桩 >32 口会被静默截断（少报空闲）。
+// 提到 64 覆盖常见 48 口桩 + 冗余，超限时记 warn（不再静默）。
+export const MAX_PORTS_PER_DEVICE = 64;
 export const MAX_PORT_ITEMS = 500;
 
 /** 区域稳定 ID：md5(name) 前 16 位（与 cloud/geo.py 一致） */
@@ -228,6 +230,7 @@ export function cleanPortEntries(raw: unknown, strict: boolean): CleanPort[] {
   }));
   if (entries.length > MAX_PORTS_PER_DEVICE) {
     if (strict) throw new Error('端口数量超限');
+    logger.warn({ total: entries.length, cap: MAX_PORTS_PER_DEVICE }, '[store] 单桩端口数超上限，已截断');
     return entries.slice(0, MAX_PORTS_PER_DEVICE);
   }
   return entries;

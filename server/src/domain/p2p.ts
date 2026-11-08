@@ -290,6 +290,15 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
   stats: StatusMessage['stats'] | null;
 }>();
 
+/** L11：peerMeta 只增不删（开了 trust 时外部节点可刷），定期清超过 24h 没活跃的 */
+function sweepPeerMeta(): void {
+  if (peerMeta.size < 200) return;
+  const cutoff = new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 19).replace('T', ' ');
+  for (const [id, meta] of peerMeta) {
+    if (meta.last_seen && meta.last_seen < cutoff) peerMeta.delete(id);
+  }
+}
+
   /** 本机数据统计（心跳附带） */
   async function selfStats(): Promise<StatusMessage['stats']> {
     try {
@@ -372,6 +381,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
         if (msg.v !== 1) return;
         // 记录节点版本与最近活跃时间
         const prev = peerMeta.get(fromId);
+        sweepPeerMeta();
         peerMeta.set(fromId, {
           name: prev?.name ?? fromId.slice(0, 8),
           version: msg.sender_version ?? prev?.version ?? 'unknown',

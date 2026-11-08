@@ -19,20 +19,35 @@ export interface TokenPoolStats {
 /** 池健康：总数 / 有效数 / 最早到期 / 覆盖到何时 / 长寿命数 */
 export async function tokenPoolStats(): Promise<TokenPoolStats> {
   const db = getDb();
-  const res = await sql<{ expires_at: number | null }>`SELECT expires_at FROM token_pool`.execute(db);
+  // L12：原来把整表 expires_at 拉到 JS 里算 min/max（/status 与 /api/overview 每次调用）
+  const res = await sql<{ n: number; valid: number; min_exp: number | null; max_exp: number | null }>`
+    SELECT COUNT(*) AS n,
+           SUM(CASE WHEN COALESCE(expires_at, 0) > ${Math.floor(Date.now() / 1000)} THEN 1 ELSE 0 END) AS valid,
+           MIN(expires_at) AS min_exp,
+           MAX(expires_at) AS max_exp
+      FROM token_pool
+  `.execute(db);
+  const row = res.rows[0];
   const nowTs = Math.floor(Date.now() / 1000);
-  const exps = res.rows.map((r) => Number(r.expires_at ?? 0));
-  const valid = exps.filter((e) => e > nowTs);
-  const earliest = valid.length ? Math.min(...valid) : null;
-  const latest = valid.length ? Math.max(...valid) : null;
+  const count = Number(row?.n ?? 0);
+  const validCount = Number(row?.valid ?? 0);
+  const minExp = row?.min_exp === null || row?.min_exp === undefined ? null : Number(row.min_exp);
+  const maxExp = row?.max_exp === null || row?.max_exp === undefined ? null : Number(row.max_exp);
+  // 最早到期只看还在有效期内的（min_exp 可能来自已过期的）
+  const earliest = minExp !== null && minExp > nowTs ? minExp : null;
+  // 覆盖到：最晚到期（只要还有一个有效 token 就能继续抓取）
+  const latest = maxExp !== null && maxExp > nowTs ? maxExp : null;
+  // 长效数：expires_at 距现在超过阈值的
+  const longLivedRes = await sql<{ n: number }>`
+    SELECT COUNT(*) AS n FROM token_pool
+     WHERE COALESCE(expires_at, 0) - ${nowTs} > ${TOKEN_LONG_LIVED_SECONDS}
+  `.execute(db);
   return {
-    count: exps.length,
-    valid: valid.length,
-    // 最早到期：最小 expires_at（用于「快过期」提醒）
+    count,
+    valid: validCount,
     earliest_exp: earliest,
-    // 覆盖到：最晚到期（只要还有一个有效 token 就能继续抓取，数据覆盖到最后一个过期）
     cover_until: latest,
-    long_lived: valid.filter((e) => e - nowTs > TOKEN_LONG_LIVED_SECONDS).length,
+    long_lived: Number(longLivedRes.rows[0]?.n ?? 0),
   };
 }
 
