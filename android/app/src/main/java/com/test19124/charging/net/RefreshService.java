@@ -175,6 +175,10 @@ public final class RefreshService {
                 Log.w("RefreshService", "刷新失败: " + e);
                 String msg = e.getMessage() == null ? e.toString() : e.getMessage();
                 postRefreshDone(false, msg);
+                // 必须在这里复位：否则 finally 的 `if (busy || refreshRunning)` 仍为真，
+                // 会再发一条「刷新异常中断」，把真实原因覆盖掉（前端会连吃两条 Toast）
+                busy = false;
+                refreshRunning = false;
             } finally {
                 if (busy || refreshRunning) {
                     busy = false;

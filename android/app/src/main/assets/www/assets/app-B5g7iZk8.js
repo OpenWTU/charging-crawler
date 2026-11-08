@@ -1,1 +1,0 @@
-import"./_plugin-vue_export-helper-CySAu_Mo.js";import{i as e,t}from"./vant-J63bDue7.js";import{t as n}from"./App-Co3DtrTg.js";e(n).use(t).mount(`#app`);

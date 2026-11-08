@@ -40,8 +40,29 @@ CHANGELOG = [
     "抓取与端口阶段合并为一条连续进度（0-45-95%），不再闪没",
     "令牌保存/数据上传后立即刷新顶部健康状态（含 overview 缓存主动失效）",
 ]
-VERSION_CODE = os.environ.get("CHARGE_VERSION_CODE", "215")
 VERSION_NAME = os.environ.get("CHARGE_VERSION_NAME", "1.11.39")
+
+
+def derive_version_code(name: str) -> str:
+    """与 CI 完全相同的公式：vX.Y.Z -> X*1_000_000 + Y*1_000 + Z。
+
+    曾经这里写死 "215"，而 CI 按 tag 派生（v1.11.39 -> 1011039）：
+    同一个 versionName 会发行出两个相差 5000 倍的 versionCode，
+    装了 CI 包的设备之后再也装不上本地包（系统判为降级），只能卸载重装（丢令牌/丢设置）。
+    """
+    m = re.match(r"^v?(\d+)\.(\d+)\.(\d+)$", name.strip())
+    if not m:
+        raise SystemExit(f"VERSION_NAME 格式非法（应为 X.Y.Z）：{name!r}")
+    return str(int(m.group(1)) * 1_000_000 + int(m.group(2)) * 1_000 + int(m.group(3)))
+
+
+_derived = derive_version_code(VERSION_NAME)
+VERSION_CODE = (os.environ.get("CHARGE_VERSION_CODE") or _derived).strip()
+# 防漂移断言：外部传进来的 versionCode 必须与 name 派生值一致
+if VERSION_CODE != _derived:
+    raise SystemExit(
+        f"versionCode 与 versionName 不一致：{VERSION_CODE} != {_derived}（{VERSION_NAME}）"
+    )
 
 
 
