@@ -111,6 +111,10 @@ def main():
     dex_dir = BUILD / "dex"; dex_dir.mkdir()
     gen = BUILD / "gen"; gen.mkdir()
     res = BUILD / "res"; res.mkdir()
+    # M9 的回归修复：assets/www 已从 git 取消跟踪（.gitignore），
+    # CI checkout 后这个目录**不存在** —— 原来直接 copy2 会 FileNotFoundError。
+    # （v2.4.0–v2.4.3 的 CI APK 全部失败就是这个原因，我一直在猜版本号/run()）
+    www.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(www / "assets", ignore_errors=True)
     for name in ("index.html", "app.html", "admin.html"):
         src = web_dist / name

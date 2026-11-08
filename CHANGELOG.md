@@ -6,6 +6,25 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.4] - 2026-11-08
+
+### 修复（CI APK 构建失败的真正根因 —— v2.4.0~v2.4.3 连续四版都挂在这）
+```
+FileNotFoundError: [Errno 2] No such file or directory:
+  '.../android/app/src/main/assets/www/index.html'
+```
+M9 把 `assets/www` 从 git 取消跟踪（改由构建时生成）后，CI checkout 出来的仓库**没有这个目录**，
+而 `build.py` 在 `shutil.copy2` 之前没有创建它 —— 于是必然崩在「构建 APK」这一步。
+
+修复：`www.mkdir(parents=True, exist_ok=True)` 放在拷贝之前。
+本地已模拟 CI 状态（先 `rm -rf assets/www`）验证：构建成功、APK 461 KB、目录被自动创建。
+
+> 前几版走过的弯路（记录下来避免重犯）：
+> v2.4.0 猜是 freshness 检查 → v2.4.1 改成 CI 跳过；v2.4.2 猜是版本号断言 → 改成警告 + 补
+> subprocess 输出捕获；v2.4.3 猜是 ci.yml 缺 env → 补 env。
+> 这些都是真实存在的小问题（顺手修了），但**都不是这次的根因**。
+> 真正的教训：CI 失败必须先把日志拿到手再改，否则一路猜。
+
 ## [v2.4.3] - 2026-11-08
 
 ### 修复（CI APK 构建的真正根因）
