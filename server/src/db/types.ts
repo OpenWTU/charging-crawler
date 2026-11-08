@@ -1,7 +1,7 @@
 /**
  * Kysely 表类型定义。
  *
- * ⚠️ 必须与 `migrations/sqlite/001_init.sql` + `002_migrate.sql` 完全对应。
+ * ⚠️ 必须与 `migrations/sqlite/001_init.sql` + `003_admin.sql` 完全对应。
  * 字段名、可空性、类型都按现有生产库的实际情况写（用 PRAGMA table_info 校对）。
  *
  * 迁移到 PostgreSQL 时，这里只需调整类型映射（如 INTEGER 0/1 → boolean），

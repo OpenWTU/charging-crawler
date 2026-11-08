@@ -192,7 +192,16 @@ export function awaitGlobalBridge(cbKey, invoke, timeoutMs, opts = {}) {
   const isSyncHit = typeof opts.isSyncHit === 'function' ? opts.isSyncHit : null;
   return new Promise((resolve) => {
     let done = false;
-    const finish = (v) => { if (!done) { done = true; clearTimeout(timer); resolve(v); } };
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      // M12：把装上去的全局回调删掉 —— 原来只赋值不清理，
+      // __onNow/__onAreasPorts/__onAreaPorts/__onAreaCoords 各自持有一份已结算的闭包
+      // （含 Vue ref 与定时器引用）常驻 window；原生迟到的回调会打到死函数上。
+      try { delete window[cbKey]; } catch { /* ignore */ }
+      resolve(v);
+    };
     const timer = setTimeout(() => finish({ threw: true, raw: null, sync: null }), timeoutMs);
     window[cbKey] = (raw) => finish({ threw: false, raw, sync: null });
     try {

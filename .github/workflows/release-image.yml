@@ -41,6 +41,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # L9：原来任何 v* tag 都无条件打 :latest —— 发一个补丁版本时 latest 会被"回退"到旧代码，
+      # 而生产 systemd timer 跟的就是 latest。这里先判断是不是最新 tag。
+      - name: 判断是否为最新版本 tag
+        id: latest
+        run: |
+          LATEST=$(git tag -l 'v[0-9]*' --sort=-v:refname | head -n1)
+          echo "latest_tag=$LATEST"
+          if [ "$LATEST" = "${GITHUB_REF_NAME}" ]; then
+            echo "is_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -49,7 +62,7 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
           tags: |
-            ghcr.io/openwtu/charging-crawler:latest
             ghcr.io/openwtu/charging-crawler:${{ github.ref_name }}
+            ${{ steps.latest.outputs.is_latest == 'true' && 'ghcr.io/openwtu/charging-crawler:latest' || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
