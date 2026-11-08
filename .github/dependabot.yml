@@ -18,6 +18,21 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "deps"
+    ignore:
+      # GHSA-g3hv-75wg-m249（medium，CVE-2026-118764）：要求 minimatch >= 11.0.1。
+      # 但 eslint@10 依赖 "^10.2.6"、@eslint/config-array@0.23.5 依赖 "^10.2.4" ——
+      # 上游 semver 范围锁死在 10.x，Dependabot 解析不到 11，于是每次都报
+      # `security_update_not_possible`（latest-resolvable 10.2.6 vs 需 11.0.1）。
+      #
+      # 为什么可以不修（不是逃避，是已核实的低风险）：
+      #  1. 该漏洞要求 `optimizationLevel >= 2` + 攻击者可控的 glob pattern；
+      #     实测 eslint 与 @eslint/config-array 里**完全没有 optimizationLevel**，用默认值 1。
+      #  2. minimatch 在 webui 里是 devDependency 的传递依赖（只用于 eslint 匹配文件路径），
+      #     **不进构建产物**，生产运行时根本不存在。
+      #  3. 另外两条 high（GHSA-7r86-cg39-jmmj / GHSA-23c5-xmqv-rm74，ReDoS）
+      #     已在 10.2.3 修复，当前装的 10.2.6 已覆盖。
+      # 跟踪方式：等 eslint 上游放宽到 ^11 后删掉这条 ignore 即可（届时 need 一次 lint 回归）。
+      - dependency-name: minimatch
     groups:
       vue-stack:
         patterns:
