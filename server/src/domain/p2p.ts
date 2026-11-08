@@ -532,6 +532,10 @@ async function ingestSnapshot(msg: SnapshotMessage, fromId: string): Promise<voi
       logger.warn({ err: e, peer: fromId.slice(0, 16) }, '[p2p] payload 形状非法，已丢弃');
       return;
     }
+    // M5（复审）：validatePayload 只返回白名单字段，会把上面打的 _suspect 洗掉 ——
+    // warn 模式「落库并打标」于是名存实亡（事后筛不出被判定可疑的快照）。这里补回。
+    const suspectRaw = (payload as Record<string, unknown>)._suspect;
+    if (suspectRaw) (safePayload as Record<string, unknown>)._suspect = suspectRaw;
     const localDigest = snapshotDigest(safePayload);
     if (localDigest !== msg.body_sha256) {
       // 摘要不一致：消息可能被篡改，或发送方用了不同序列化 —— 以本地重算为准继续去重

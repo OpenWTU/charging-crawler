@@ -199,6 +199,8 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     const ownerMap = new Map<string, string | null>();
     for (const r of knownRes.rows) ownerMap.set(String(r.device_hex), r.owner_device ?? null);
     let cleanPortsResult;
+    // S2：被归属校验拒绝的桩（回给客户端 + 进审计）
+    let rejectedDevices: string[] = [];
     try {
       cleanPortsResult = cleanPorts(rawPorts, knownDevices);
     } catch (e) {
@@ -225,7 +227,14 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     // App 的 pending 补传 / 网络重试会重复上传同一份 body（只换 nonce），
     // 原来会落两条快照 → /api/now 的 delta、analytics 样本数、后台卡片全部虚高。
     // 与 storeSnapshot / P2P 用同一个 snapshotDigest + 30 分钟窗口。
-    const digest = snapshotDigest(payload as unknown as Record<string, unknown>);
+    // S1（复审实测）：snapshotDigest 只覆盖 payload（project/app_version/token_user/areas），
+    // 而 ports 是独立的 obj.ports、不进 payload —— 于是「区域计数不变、但带了新端口数据」的上传
+    // 会被判重复整包丢弃（实测另一个桩的端口状态完全没写进去，App 还收到 ok:true）。
+    // 修法：把规范化后的端口一并纳入摘要（ports 变了就不是重复）。
+    const digest = snapshotDigest({
+      ...payload,
+      ports: cleanPortsResult,
+    } as unknown as Record<string, unknown>);
     const dupCutoff = nowStr(new Date(Date.now() - 30 * 60 * 1000));
     const dupRes = await sql<{ id: number }>`
       SELECT id FROM snapshots
@@ -233,6 +242,18 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
        LIMIT 1
     `.execute(db);
     if (dupRes.rows[0]) {
+      // M10：重复上传也要更新设备计数与 last_seen —— 否则 /admin 的「在线设备」与
+      // 「30 天未上传」会误判成掉线（实测 uploads/last_seen 停在旧值）
+      if (deviceId) {
+        try {
+          await sql`
+            UPDATE devices SET uploads = uploads + 1, last_seen = ${nowStr()}
+             WHERE device_id = ${deviceId}
+          `.execute(db);
+        } catch (e) {
+          logger.warn({ err: e }, '[upload] 重复上传的设备计数更新失败');
+        }
+      }
       markUpload(req, 'duplicate', {
         deviceId: deviceId ?? null,
         detail: `dup of snapshot ${dupRes.rows[0].id}`,
@@ -240,8 +261,12 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       return reply.send({
         ok: true,
         duplicate: true,
+        // L2：与正常返回保持同名字段，客户端不用兼容两套
+        id: dupRes.rows[0].id,
         snapshot_id: dupRes.rows[0].id,
+        accepted: 0,
         areas: payload.areas.length,
+        skipped: [],
       });
     }
 
@@ -284,24 +309,44 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
             .execute();
         }
 
+        rejectedDevices = [];
         // S2：设备↔桩归属校验
         // 原来只判 device_hex 存在于 controllers —— 任意自注册设备都能上报别人的桩，
         // 把满桩刷成「空闲」（实测 /api/area-ports 立刻由 full 变 free=16）。
         // 规则：首见登记归属；同设备可继续写；跨设备降级为「只记日志、不写 port_states」。
         for (const item of cleanPortsResult) {
-          const owner = ownerMap.get(item.device_hex);
+          let owner = ownerMap.get(item.device_hex) ?? null;
           if (!owner && deviceId) {
-            await sql`
+            // M11（复审）：原来不检查影响行数，并发两个设备首报同一个桩时，
+            // 落败方仍然往 ownerMap 里塞自己并继续写 port_states。改为按影响行数判定，
+            // 抢输就重新读归属并按跨设备规则处理。
+            const claimed = await sql`
               UPDATE controllers SET owner_device = ${deviceId}
                WHERE device_hex = ${item.device_hex} AND COALESCE(owner_device, '') = ''
             `.execute(trx);
-            ownerMap.set(item.device_hex, deviceId);
-          } else if (owner && deviceId && owner !== deviceId) {
+            if (Number(claimed.numAffectedRows ?? 0) > 0) {
+              owner = deviceId;
+              ownerMap.set(item.device_hex, deviceId);
+            } else {
+              const re = await sql<{ owner_device: string | null }>`
+                SELECT owner_device FROM controllers WHERE device_hex = ${item.device_hex}
+              `.execute(trx);
+              owner = re.rows[0]?.owner_device ?? null;
+              ownerMap.set(item.device_hex, owner);
+            }
+          }
+          if (owner && deviceId && owner !== deviceId) {
+            // S2（复审）：跨设备拒绝必须留痕（原来只有一条 logger.warn，后台/客户端都看不到）
+            rejectedDevices.push(item.device_hex);
+            markUpload(req, 'owner_rejected', {
+              deviceId,
+              detail: `device_hex=${item.device_hex} owner=${owner}`,
+            });
             logger.warn(
               { device_hex: item.device_hex, owner, attacker: deviceId, ip },
               '[upload] 跨设备改写桩状态已被拒绝',
             );
-            continue; // 不写 port_states
+            continue; // 不写 port_states / controllers.updated_at / pile_samples
           }
           for (const p of item.ports) {
             await trx
@@ -373,7 +418,37 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       id: snapshotId,
       accepted: valid.length,
       skipped: skipped.length,
+      // S2：告诉客户端哪些桩因归属不符被拒（App 可提示"该桩已被其他设备绑定"）
+      ...(rejectedDevices.length
+        ? { warn: `以下桩的归属属于其他设备，本次未写入：${rejectedDevices.join(', ')}`, rejected: rejectedDevices }
+        : {}),
     });
+  });
+
+  /**
+   * M1（复审实测：之前 CHANGELOG 说补了、实际没写入）：webui 的「手动刷新」一直打这个端点。
+   * 拉一轮抓取并返回结果；带限流，避免被当免费算力。
+   */
+  app.post('/api/refresh', async (req, reply) => {
+    if (!rateOk(req.ip, 'refresh', 6, 60)) {
+      return reply.code(429).send({ ok: false, error: '刷新过于频繁，请稍后再试' });
+    }
+    try {
+      const { refreshRound } = await import('../domain/worker.js');
+      const result = await refreshRound();
+      // M2：刷新成功后让首页缓存立刻失效
+      try {
+        const { invalidateNowCache } = await import('./state.js');
+        invalidateNowCache();
+      } catch { /* 循环依赖时忽略 */ }
+      const ok = !/^(error|fail|no-token)/i.test(result);
+      return reply.send({ ok, result });
+    } catch (e) {
+      return reply.code(500).send({
+        ok: false,
+        error: e instanceof Error ? e.message : '刷新失败',
+      });
+    }
   });
 
   /* ================= /api/device/register ================= */

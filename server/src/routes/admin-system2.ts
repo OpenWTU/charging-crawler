@@ -38,7 +38,9 @@ const MAX_QUERY_ROWS = 5000;
 const QUERY_TIMEOUT_MS = 5000;
 
 /** 不允许整表浏览/导出的敏感表 */
-const SECRET_TABLES = new Set(['admin_users', 'devices', 'nonces']);
+// M7：devices 从整表禁读降级 —— 它的敏感字段是 secret_enc（列级拦截），
+// 而 device_id/model/status/last_seen 这些后台排查恰恰需要能查。
+const SECRET_TABLES = new Set(['admin_users', 'nonces']);
 
 /** 只读 SQL 的黑名单（出现即拒绝） */
 const SQL_DENY = /\b(insert|update|delete|drop|alter|create|replace|attach|detach|pragma|vacuum|reindex|begin|commit|rollback|savepoint|release)\b/i;
@@ -305,13 +307,24 @@ export async function registerAdminSystemRoutes(scope: FastifyInstance): Promise
       return reply.code(400).send({ ok: false, error: 'SQL 含不允许的关键字' });
     }
     // M6：/db/rows 拦了敏感表，/db/query 也必须拦（否则 super 一条 SELECT 就把口令哈希拖走）
+    // M7（复审实测）：直接在原文上匹配会误杀字符串字面量 ——
+    //   `where detail like '%devices%'` 被判 403，带这些词的正常查询全不可用。
+    // 先把单引号/双引号里的内容抹掉再匹配（不留空串，避免把 '' 拼成非法 SQL）。
+    const scannable = text.replace(/'(?:[^']|'')*'/g, "''").replace(/"(?:[^"]|"")*"/g, '""');
     for (const t of SECRET_TABLES) {
-      if (new RegExp(`\\b${t}\\b`, 'i').test(text)) {
+      if (new RegExp(`\\b${t}\\b`, 'i').test(scannable)) {
         return reply.code(403).send({
           ok: false,
           error: `${t} 含敏感字段（口令哈希/设备密钥），不允许通过 SQL 查询`,
         });
       }
+    }
+    // M7：devices 不必整表禁读 —— 只禁敏感列名出现即可（device_id/model/status 这些应该可查）
+    if (/\\bsecret_enc\\b|\\bpass_hash\\b|\\badmin_users\\b/i.test(scannable)) {
+      return reply.code(403).send({
+        ok: false,
+        error: '不允许查询口令哈希/设备密钥字段',
+      });
     }
     if (!/\blimit\b/i.test(text)) text = `${text} LIMIT ${MAX_QUERY_ROWS}`;
     const started = Date.now();

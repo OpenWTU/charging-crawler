@@ -222,7 +222,11 @@ export function noteLoginFailure(ip: string, username?: string): boolean {
       loginState.set(key, s);
     }
     s.fails += 1;
-    if (s.fails >= LOGIN_MAX_FAILS) {
+    // M8（复审实测）：ip 桶也参与锁定 → 别人拿随便一个用户名错 5 次，
+    // 就能把该 IP 下**所有**管理员锁 10 分钟（TRUST_PROXY=false 时是全站共享一个 IP）。
+    // 现在 ip 桶只做统计/告警，锁定只认 ipu 桶。
+    const isIpBucket = key.startsWith('ip:');
+    if (!isIpBucket && s.fails >= LOGIN_MAX_FAILS) {
       s.lockedUntil = now + LOGIN_LOCK_SEC;
       locked = true;
     }

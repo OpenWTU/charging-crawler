@@ -23,7 +23,9 @@ export async function tokenPoolStats(): Promise<TokenPoolStats> {
   const res = await sql<{ n: number; valid: number; min_exp: number | null; max_exp: number | null }>`
     SELECT COUNT(*) AS n,
            SUM(CASE WHEN COALESCE(expires_at, 0) > ${Math.floor(Date.now() / 1000)} THEN 1 ELSE 0 END) AS valid,
-           MIN(expires_at) AS min_exp,
+           -- M4（复审实测）：原来取全表 MIN，池里只要留 1 条过期 token，
+           -- earliest_exp 就恒为 null，「即将过期」提醒永久消失。这里直接排除过期行。
+           MIN(CASE WHEN COALESCE(expires_at, 0) > ${Math.floor(Date.now() / 1000)} THEN expires_at END) AS min_exp,
            MAX(expires_at) AS max_exp
       FROM token_pool
   `.execute(db);

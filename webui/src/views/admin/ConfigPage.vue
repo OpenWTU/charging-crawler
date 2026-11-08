@@ -28,7 +28,7 @@ v-else-if="row.type === 'bool_or_null'" v-model="draft[row.key]" class="a-select
             </td>
             <td class="a-small a-muted">{{ row.note || '' }}</td>
             <td>
-          <button v-if="isSuper || !SUPER_ONLY_SETTINGS.includes(row.key)" class="a-btn sm" @click="save(row.key)">保存</button>
+          <button v-if="canWrite && (isSuper || !SUPER_ONLY_SETTINGS.includes(row.key))" class="a-btn sm" @click="save(row.key)">保存</button>
           <span v-else class="a-small a-muted">仅超管可改</span>
         </td>
           </tr>
@@ -74,7 +74,7 @@ v-else-if="row.type === 'bool_or_null'" v-model="draft[row.key]" class="a-select
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onActivated, reactive, ref } from 'vue';
 import { SUPER_ONLY_SETTINGS, useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
@@ -114,5 +114,7 @@ async function save(key) {
   }
 }
 
-onMounted(load);
+// S1（复审实测）：KeepAlive 让页面只加载一次 —— 切回来是旧数据。
+// 用 onActivated 替代 onMounted（首次挂载也会触发，不会双跑）。
+onActivated(load);
 </script>

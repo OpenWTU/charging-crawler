@@ -118,7 +118,14 @@ export interface NowItem {
 /** S1：/api/now 是公开接口且每次要跑 14 天双聚合（实测 0.19–0.49s，同步阻塞事件循环），
  * 任何人循环 GET 就能让上传/worker/P2P 一起停摆。这里加 60 秒内存缓存 + 按 IP 限流。 */
 const NOW_TTL_MS = 60_000;
-let nowCache: { at: number; key: string; body: unknown } | null = null;
+const NOW_CACHE_MAX = 32;
+// M2：单槽会被不同坐标打穿（A 命中 → B 覆盖 → A 再 miss），改小 Map + 上限
+const nowCache = new Map<string, { at: number; body: unknown }>();
+
+/** 上传/刷新成功后调用，让首页立刻看到新数据（否则要等 60s） */
+export function invalidateNowCache(): void {
+  nowCache.clear();
+}
 
 export async function nowPayload(
   latRaw: unknown,
@@ -252,20 +259,26 @@ export async function registerStateRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/now', async (req, reply) => {
-    // S1：限流 + 缓存（公开接口，避免被当作 DoS 入口）
+    const cacheKey = `${(req.query as { lat?: string }).lat ?? ''}|${(req.query as { lng?: string }).lng ?? ''}|${(req.query as { radius?: string }).radius ?? ''}`;
+    // S3（复审实测）：缓存命中要在限流**之前** return —— 原来先扣额度，单 IP 部署
+    // （TRUST_PROXY 默认 false → 全站共享一个 req.ip）时命中缓存也计数，20 次/分钟就把全站封死。
+    const cached = nowCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < NOW_TTL_MS) {
+      return reply.header('X-Cache', 'hit').send(cached.body);
+    }
     if (!rateOk(req.ip, 'now', 20, 60)) {
       return reply.code(429).send({ ok: false, error: '请求过于频繁，请稍后再试' });
-    }
-    const cacheKey = `${(req.query as { lat?: string }).lat ?? ''}|${(req.query as { lng?: string }).lng ?? ''}|${(req.query as { radius?: string }).radius ?? ''}`;
-    if (nowCache && nowCache.key === cacheKey && Date.now() - nowCache.at < NOW_TTL_MS) {
-      return reply.header('X-Cache', 'hit').send(nowCache.body);
     }
 
     const q = (req.query ?? {}) as Record<string, unknown>;
     try {
       const body = await nowPayload(q.lat, q.lng);
-      // S1：写入 60 秒缓存（同一量化 key 的后续请求直接命中）
-      nowCache = { at: Date.now(), key: cacheKey, body };
+      // S1：写入 60 秒缓存（key 维度隔离 + 上限淘汰最旧）
+      if (nowCache.size >= NOW_CACHE_MAX) {
+        const oldest = [...nowCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+        if (oldest) nowCache.delete(oldest[0]);
+      }
+      nowCache.set(cacheKey, { at: Date.now(), body });
       return reply.send(body);
     } catch (err) {
       app.log.error({ err }, '/api/now 失败');

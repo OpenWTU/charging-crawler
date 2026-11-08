@@ -62,7 +62,7 @@ v-for="t in tables" :key="t.name" class="a-btn sm"
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onActivated, ref } from 'vue';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
 const tables = ref([]);
@@ -131,7 +131,9 @@ async function runQuery() {
   }
 }
 
-onMounted(loadTables);
+// S1（复审实测）：KeepAlive 让页面只加载一次 —— 切回来是旧数据。
+// 用 onActivated 替代 onMounted（首次挂载也会触发，不会双跑）。
+onActivated(loadTables);
 </script>
 
 <style scoped>

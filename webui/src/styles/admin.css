@@ -14,15 +14,10 @@ body {
 .admin { max-width: 1040px; margin: 0 auto; padding: var(--sp-4) var(--sp-4) 44px; }
 
 .topbar {
-  /* L1：新页面复用了 .topbar，这里不能再带 radius/阴影/浅色字（会渗进 AdminShell 顶栏） */
-  border-radius: 0;
-  color: var(--text);
-  box-shadow: none;
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  flex-wrap: wrap;
-  background: var(--brand-gradient);
-  border-radius: var(--r-lg); padding: var(--sp-4) var(--sp-5); color: var(--brand-fg);
-  box-shadow: var(--shadow-pop);
+  /* M8（复审实测）：原来同一规则里前半段写 radius:0/shadow:none/color:var(--text)，
+     后半段又写回 border-radius:var(--r-lg)/box-shadow:var(--shadow-pop)/color:var(--brand-fg) ——
+     后写覆盖前写，等于白改。这里只保留一套。 */
+  display: flex; align-items: center; gap: 12px;
 }
 .brand { display: flex; align-items: center; gap: var(--sp-3); }
 .logo {

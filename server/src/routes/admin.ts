@@ -195,15 +195,20 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   /* ===== 公开：登录 / 登出 ===== */
   app.post('/admin/login', async (req, reply) => {
     // L18：登录也要挡一下跨站表单（login-CSRF 能把受害者登到攻击者账号）
-    // L5：原来用 host.startsWith(o.host) 且 host 取客户端可控的 x-forwarded-host，
-    // `Origin: https://evil.com` + `X-Forwarded-Host: evil.com.attacker` 就能通过。
-    // 改成 host:port 精确比较。
+    // M9（复审实测）：两处漏洞/误杀
+    //   ① 用 x-forwarded-host 做安全判断 → 客户端自带 `X-Forwarded-Host: evil.com` 即可绕过；
+    //   ② 用 o.host 精确比较 → 非默认端口部署（host 无端口、Origin 有端口）时管理员登不上。
+    // 修法：只信任 req.headers.host，比较时归一化默认端口。
     const origin = req.headers.origin;
     if (origin) {
       try {
         const o = new URL(origin);
-        const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '');
-        if (host && o.host !== host.split(',')[0]?.trim()) {
+        const hostRaw = String(req.headers.host ?? '').split(',')[0]?.trim().toLowerCase();
+        // 归一化：去掉默认端口
+        const norm = (h: string): string => h
+          .replace(/^([^:]+):80$/, '$1')
+          .replace(/^([^:]+):443$/, '$1');
+        if (hostRaw && norm(o.host.toLowerCase()) !== norm(hostRaw)) {
           return reply.code(403).send({ ok: false, error: '跨站请求被拒绝' });
         }
       } catch {

@@ -457,11 +457,32 @@ export async function workerRound(
     await sql`
       DELETE FROM worker_runs WHERE id < (SELECT MAX(id) - 500 FROM worker_runs)
     `.execute(db);
-    const cutoff = nowStr(new Date(Date.now() - 90 * 86400 * 1000));
+    // M12（复审实测）：这里原来硬编码 90 天，后台的 data_retention_days 从来没被读过；
+    // 而且 p2p_validation / admin_audit / config_history / alert_state 完全没有清理，无界增长。
+    let retentionDays = 90;
+    try {
+      const { getSetting } = await import('./adminsettings.js');
+      const v = Number(await getSetting('data_retention_days'));
+      if (Number.isFinite(v) && v >= 7) retentionDays = v;
+    } catch { /* 用默认 */ }
+    const cutoff = nowStr(new Date(Date.now() - retentionDays * 86400 * 1000));
     await sql`DELETE FROM area_samples WHERE received_at < ${cutoff}`.execute(db);
     await sql`DELETE FROM snapshots WHERE received_at < ${cutoff}`.execute(db);
     await sql`DELETE FROM pile_samples WHERE ts < ${cutoff}`.execute(db);
     await sql`DELETE FROM upload_audit WHERE ts < ${cutoff}`.execute(db);
+    // M22：审计与互校明细也按保留期清（p2p_validation.detail 每条带整份 areas，最占空间）
+    await sql`DELETE FROM p2p_validation WHERE created_at < ${cutoff}`.execute(db).catch((e) => {
+      logger.warn({ err: e }, '[worker] 清理 p2p_validation 失败');
+    });
+    await sql`DELETE FROM admin_audit WHERE ts < ${cutoff}`.execute(db).catch((e) => {
+      logger.warn({ err: e }, '[worker] 清理 admin_audit 失败');
+    });
+    await sql`DELETE FROM config_history WHERE changed_at < ${cutoff}`.execute(db).catch((e) => {
+      logger.warn({ err: e }, '[worker] 清理 config_history 失败');
+    });
+    await sql`DELETE FROM alert_state WHERE updated_at < ${cutoff}`.execute(db).catch((e) => {
+      logger.warn({ err: e }, '[worker] 清理 alert_state 失败');
+    });
   } catch (e) {
     logger.error({ err: e }, '[worker] 记录失败');
   }

@@ -54,7 +54,24 @@ CHANGELOG = [
     "抓取与端口阶段合并为一条连续进度（0-45-95%），不再闪没",
     "令牌保存/数据上传后立即刷新顶部健康状态（含 overview 缓存主动失效）",
 ]
-VERSION_NAME = os.environ.get("CHARGE_VERSION_NAME", "1.11.39")
+def _default_version_name() -> str:
+    """L9（复审）：默认值原来是写死的 1.11.39，与仓库当前版本脱节 ——
+    本地不带 env 构建出的 versionCode（1011039）远小于 CI 的（如 2004006），
+    "装过 CI 包就装不上本地包"的老症状会以新数字重现。
+    改为：优先读 android/version.json 的 version_name，读不到再退到写死值。"""
+    try:
+        vj = Path(__file__).resolve().parent / "version.json"
+        if vj.is_file():
+            data = json.loads(vj.read_text(encoding="utf-8"))
+            name = str(data.get("version_name") or "").strip()
+            if re.match(r"^v?\d+\.\d+\.\d+$", name):
+                return name
+    except Exception:
+        pass
+    return "2.4.6"
+
+
+VERSION_NAME = os.environ.get("CHARGE_VERSION_NAME") or _default_version_name()
 
 
 def derive_version_code(name: str) -> str:

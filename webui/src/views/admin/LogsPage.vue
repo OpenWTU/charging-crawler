@@ -34,7 +34,7 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
 import { apiGet } from '../../api/adminApi.js';
 
 const level = ref('');
@@ -89,7 +89,10 @@ function reschedule() {
 }
 
 watch(auto, reschedule);
-onMounted(() => { load(); reschedule(); });
+// S2（复审实测）：KeepAlive 不会 unmount，原来只在 onBeforeUnmount 清定时器 →
+// 切走后仍每 5 秒打一次 /admin/api/logs（实测停 11.5s 发了 2 次），一直刷到退出登录。
+onActivated(() => { load(); reschedule(); });
+onDeactivated(() => { if (timer) { clearInterval(timer); timer = 0; } });
 onBeforeUnmount(() => { if (timer) clearInterval(timer); });
 </script>
 

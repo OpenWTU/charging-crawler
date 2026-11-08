@@ -34,7 +34,7 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
     }
     if (q.q) {
       const like = `%${likeEscape(String(q.q).trim())}%`;
-      base = sql`${base} AND (device_id LIKE ${like} OR COALESCE(model, '') LIKE ${like})`;
+      base = sql`${base} AND (device_id LIKE ${like} ESCAPE '\\' OR COALESCE(model, '') LIKE ${like} ESCAPE '\\')`;
     }
     if (q.cursor) {
       base = sql`${base} AND created_at < ${q.cursor}`;
@@ -145,7 +145,7 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
              (SELECT COUNT(*) FROM area_samples s
                WHERE s.area_name = a.name) AS samples
         FROM areas a WHERE COALESCE(a.deleted_at, '') = ''`;
-    if (q) base = sql`${base} AND a.name LIKE ${'%' + likeEscape(String(q).trim()) + '%'}`;
+    if (q) base = sql`${base} AND a.name LIKE ${'%' + likeEscape(String(q).trim()) + '%'} ESCAPE '\\'`;
     const res = await sql<{
       area_id: string;
       name: string;
@@ -215,16 +215,20 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
       }
       parts.push(sql`lng = ${lng}`);
     }
-    if (!parts.length) return reply.code(400).send({ ok: false, error: '没有要修改的字段' });
+    // M3（复审实测）：原来这里就 return 400，而改名块在它后面 —— 导致「只改名」必然
+    // 报「没有要修改的字段」。判断挪到 parts 组装完之后（下面已有一份）。
 
     // M5：改名要传播到 area_samples / controllers，否则历史按旧名分组、live 显示旧名
     let newName: string | null = null;
     if (body.name !== undefined) {
       newName = String(body.name).trim().slice(0, 80);
       if (!newName) return reply.code(400).send({ ok: false, error: '区域名不能为空' });
+      // S4（复审实测）：原来排除了软删行，但 areas.name 的 UNIQUE 约束**不排除**软删 →
+      // 改成某个"已软删区域的名字"时，采样先被改好、areas 再撞 UNIQUE 失败，留下错位数据。
+      // 这里不排除软删行，提前拦住。
       const dup = await sql<{ n: number }>`
         SELECT COUNT(*) AS n FROM areas
-         WHERE name = ${newName} AND area_id <> ${areaId} AND COALESCE(deleted_at, '') = ''
+         WHERE name = ${newName} AND area_id <> ${areaId}
       `.execute(db);
       if (Number(dup.rows[0]?.n ?? 0) > 0) {
         return reply.code(409).send({ ok: false, error: '该区域名已存在，请改用「合并」' });
@@ -232,10 +236,14 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
       const old = await sql<{ name: string }>`SELECT name FROM areas WHERE area_id = ${areaId}`.execute(db);
       const oldName = old.rows[0]?.name;
       if (oldName && oldName !== newName) {
+        // S4：三条 UPDATE 必须在同一事务里 —— 否则改名失败时会留下「采样已改名、areas 未改」
         await db.transaction().execute(async (trx) => {
           await sql`UPDATE area_samples SET area_name = ${newName} WHERE area_name = ${oldName}`.execute(trx);
           await sql`UPDATE controllers SET area_name = ${newName} WHERE area_name = ${oldName}`.execute(trx);
+          await sql`UPDATE areas SET name = ${newName} WHERE area_id = ${areaId}`.execute(trx);
         });
+        await audit({ username: admin.username, action: 'area_rename', target: `${oldName} → ${newName}`, ip: req.ip });
+        return { ok: true, renamed: true };
       }
     }
     if (newName !== null) {
@@ -426,12 +434,42 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
     `.execute(db);
     const name = area.rows[0]?.name;
     if (!name) return reply.code(404).send({ ok: false, error: '区域不存在或已删除' });
+    // S2（复审）：改绑必须同时清空 owner_device —— 否则被抢注的桩即使管理员重新绑定，
+    // 归属仍停在攻击者设备上，后续合法数据全被跨设备规则拒绝，且没有任何 UI 能改回来。
     const r = await sql`
-      UPDATE controllers SET area_id = ${areaId}, area_name = ${name}, updated_at = ${nowLocal()}
+      UPDATE controllers
+         SET area_id = ${areaId}, area_name = ${name}, owner_device = NULL, updated_at = ${nowLocal()}
        WHERE device_hex = ${deviceHex}
     `.execute(db);
     if (!r.numAffectedRows) return reply.code(404).send({ ok: false, error: '桩不存在' });
     await audit({ username: admin.username, action: 'device_bind', target: deviceHex, ip: req.ip, detail: { area: name } });
     return { ok: true, area: name };
+  });
+
+  /**
+   * S2（复审）：归属抢注的兜底入口 —— 只有 super 能手工指定/清空某个桩的归属设备。
+   * owner_device 传空字符串表示清空（下一个上报它的设备会重新认领）。
+   */
+  scope.post('/admin/api/units/device/owner', async (req, reply) => {
+    if (!requireRole(req, reply, 'super')) return undefined;
+    const admin = adminOf(req);
+    const body = readBody<{ device_hex?: unknown; owner_device?: unknown }>(req);
+    const deviceHex = String(body.device_hex ?? '').trim();
+    if (!deviceHex) return reply.code(400).send({ ok: false, error: '缺少 device_hex' });
+    const ownerRaw = body.owner_device;
+    const owner = ownerRaw === null || ownerRaw === undefined ? '' : String(ownerRaw).trim();
+    const db = getDb();
+    const r = owner
+      ? await sql`UPDATE controllers SET owner_device = ${owner} WHERE device_hex = ${deviceHex}`.execute(db)
+      : await sql`UPDATE controllers SET owner_device = NULL WHERE device_hex = ${deviceHex}`.execute(db);
+    if (!r.numAffectedRows) return reply.code(404).send({ ok: false, error: '桩不存在' });
+    await audit({
+      username: admin.username,
+      action: 'device_owner_set',
+      target: deviceHex,
+      ip: req.ip,
+      detail: { owner: owner || null },
+    });
+    return { ok: true, owner: owner || null };
   });
 }

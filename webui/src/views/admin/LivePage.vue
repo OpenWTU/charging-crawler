@@ -44,7 +44,7 @@
     </section>
 
     <!-- 端口抽屉 -->
-    <div v-if="drawer" class="drawer-mask" @click.self="drawer = ''">
+    <div v-if="drawer" class="a-drawer-mask" role="dialog" aria-modal="true" @click.self="drawer = ''">
       <aside class="drawer">
         <header>
           <h2>{{ drawer }}</h2>
@@ -69,7 +69,7 @@ v-for="p in drawerPorts" :key="p.device_hex + ':' + p.port" class="port"
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onActivated, ref } from 'vue';
 import { apiGet } from '../../api/adminApi.js';
 
 const q = ref('');
@@ -142,7 +142,9 @@ async function openArea(name) {
   }
 }
 
-onMounted(load);
+// S1（复审实测）：KeepAlive 让页面只加载一次 —— 切回来是旧数据。
+// 用 onActivated 替代 onMounted（首次挂载也会触发，不会双跑）。
+onActivated(load);
 </script>
 
 <style scoped>

@@ -41,11 +41,11 @@ v-for="f in filters" :key="f.key" class="a-btn sm"
               <button class="a-btn sm" @click="detail(d.device_id)">详情</button>
               <button v-if="canWrite && d.status === 'pending'" class="a-btn sm primary" @click="approve([d.device_id])">审批</button>
               <button
-v-if="d.status !== 'revoked'" class="a-btn sm danger"
+v-if="canWrite && d.status !== 'revoked'" class="a-btn sm danger"
                       @click="revoke([d.device_id], true)">
 拉黑
 </button>
-              <button v-else class="a-btn sm" @click="revoke([d.device_id], false)">恢复</button>
+              <button v-else-if="canWrite" class="a-btn sm" @click="revoke([d.device_id], false)">恢复</button>
             </td>
           </tr>
           <tr v-if="!items.length"><td colspan="8" class="a-empty">没有设备</td></tr>
@@ -53,8 +53,8 @@ v-if="d.status !== 'revoked'" class="a-btn sm danger"
       </table>
       <div v-if="checked.length" class="a-toolbar a-pad">
         <span class="a-small">已选 {{ checked.length }} 台</span>
-        <button class="a-btn sm primary" @click="approve(checked)">批量审批</button>
-        <button class="a-btn sm danger" @click="revoke(checked, true)">批量拉黑</button>
+        <button v-if="canWrite" class="a-btn sm primary" @click="approve(checked)">批量审批</button>
+        <button v-if="canWrite" class="a-btn sm danger" @click="revoke(checked, true)">批量拉黑</button>
         <button class="a-btn sm" @click="del(checked)">批量删除</button>
       </div>
     </section>
@@ -89,7 +89,7 @@ v-if="d.status !== 'revoked'" class="a-btn sm danger"
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onActivated, ref } from 'vue';
 import { useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
@@ -183,7 +183,8 @@ async function del(ids) {
   }
 }
 
-onMounted(async () => {
+// S1：KeepAlive 下切回来要重新拉数据
+onActivated(async () => {
   await load();
   try {
     const s = await apiGet('/admin/api/settings');

@@ -62,7 +62,12 @@ export async function apiFetch(path, opts = {}) {
     // S2：任何页面拿到 401 都广播一次，由 AdminBoot 统一切回登录页
     // （原来只有 AdminLogin 处理，会话过期后外壳卡死、各页面静默失败）
     try {
-      window.dispatchEvent(new CustomEvent('admin-auth-expired'));
+      // M1（复审实测）：silent 之前只写在 JSDoc 里、代码从没读过 ——
+      // probeSession 自己那次 401 也会广播，冷启动时登录页同时冒出
+      // "请使用管理员账号登录" 和 "会话已过期，请重新登录"。
+      if (!opts.silent) {
+        window.dispatchEvent(new CustomEvent('admin-auth-expired'));
+      }
     } catch {
       /* 非浏览器环境 */
     }
@@ -105,7 +110,9 @@ export const apiDelete = (p, o) => apiFetch(p, { ...o, method: 'DELETE' });
 /** 探测当前会话（不抛 401，返回 null） */
 export async function probeSession() {
   try {
-    return await apiGet('/admin/api/me');
+    // M1（复审实测）：探测本身必然有一次 401，不能让它广播 admin-auth-expired ——
+    // 否则冷启动时登录页会同时显示"请使用管理员账号登录"和"会话已过期，请重新登录"。
+    return await apiGet('/admin/api/me', { silent: true });
   } catch (e) {
     if (e instanceof AuthError) return null;
     throw e;

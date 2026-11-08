@@ -149,6 +149,8 @@ const exportables = ['snapshots', 'area_samples', 'pile_samples', 'devices', 'to
 const colors = ['#047857', '#2563eb', '#b26a00', '#dc2626', '#7c3aed', '#0891b2'];
 
 async function loadSnaps() {
+  // M3（复审）：重置到底标记 —— 否则翻到末页后换筛选/刷新，按钮永远停在「已到底」
+  reachedEnd.value = false;
   error.value = '';
   try {
     const p = new URLSearchParams();

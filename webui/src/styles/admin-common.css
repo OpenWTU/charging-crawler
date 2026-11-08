@@ -124,9 +124,13 @@
    2. 表格「总数/故障」列折成两行
    3. 侧边导航最后几项被裁在视口外且无提示 */
 @media (max-width: 600px) {
+  /* L1（复审实测）：三个页面用的是 legacy .tbl，也要 nowrap */
+  .tbl th,
+  .tbl td { white-space: nowrap; }
+
   .a-tbl th,
   .a-tbl td { white-space: nowrap; }
-  .a-tbl { min-width: 520px; } /* 让容器横向滚动而不是把单元格挤成两行 */
+  .a-tbl { min-width: max-content; } /* 让容器横向滚动而不是把单元格挤成两行 */
   .a-tbl .wrap { min-width: 220px; }
 }
 

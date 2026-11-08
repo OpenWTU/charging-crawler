@@ -40,8 +40,7 @@ v-if="canWrite && c.code === 'ghost_ports'" class="a-btn sm danger"
 清理全部幽灵端口
 </button>
         <span v-else class="a-small a-muted">
-          该项需人工处理：<a
-            :href="jumpFor(c).href" class="a-btn sm">{{ jumpFor(c).label }}</a>
+          该项需人工处理：<button class="a-btn sm" @click="go(jumpFor(c).page)">{{ jumpFor(c).label }}</button>
         </span>
       </div>
     </section>
@@ -49,6 +48,7 @@ v-if="canWrite && c.code === 'ghost_ports'" class="a-btn sm danger"
 </template>
 
 <script setup>
+const emit = defineEmits(['go']);
 import { onMounted, ref } from 'vue';
 import { useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
@@ -72,15 +72,18 @@ function fmt(v) {
 /** L15：非一键修复项给出可点的跳转目标 */
 function jumpFor(c) {
   const map = {
-    conservation_fail: { href: '#history', label: '去历史分析' },
-    area_shift: { href: '#units', label: '去桩与区域' },
-    no_coords: { href: '#units', label: '去补坐标' },
-    too_dense: { href: '#devices', label: '去看设备' },
-    stale_devices: { href: '#devices', label: '去设备页' },
+    conservation_fail: { page: 'history', label: '去历史分析' },
+    area_shift: { page: 'units', label: '去桩与区域' },
+    no_coords: { page: 'units', label: '去补坐标' },
+    too_dense: { page: 'devices', label: '去看设备' },
+    stale_devices: { page: 'devices', label: '去设备页' },
   };
-  return map[c.code] || { href: '#overview', label: '去概览' };
+  return map[c.code] || { page: 'overview', label: '去概览' };
 }
 
+
+/** M2：往 Shell 发 go 事件切页（原来用 #hash，没有路由也没监听，点了没反应） */
+function go(page) { emit('go', page); }
 async function scan() {
   busy.value = true;
   error.value = '';
