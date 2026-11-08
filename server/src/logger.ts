@@ -22,8 +22,42 @@ export const LEVEL_TEXT: Record<number, string> = {
 
 function pushRing(level: number, msg: string, extra?: Record<string, unknown>): void {
   ringSeq += 1;
-  ring.push({ seq: ringSeq, ts: Date.now(), level, msg, extra });
+  ring.push({ seq: ringSeq, ts: Date.now(), level, msg, extra: sanitize(extra) });
   if (ring.length > RING_MAX) ring.splice(0, ring.length - RING_MAX);
+}
+
+/**
+ * 把日志附加字段压成**可 JSON 序列化的浅层值**。
+ *
+ * 必须做：pino 的请求日志会带 `req`/`res`（Fastify 对象里有 socket ↔ parser 的循环引用），
+ * 原样存进环形缓冲会让 `/admin/api/logs` 在 JSON.stringify 时抛
+ * "Converting circular structure to JSON"（实测 500）。
+ */
+function sanitize(obj: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!obj || typeof obj !== 'object') return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === null || v === undefined) {
+      out[k] = v ?? null;
+    } else if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      out[k] = v;
+    } else if (v instanceof Error) {
+      out[k] = v.message;
+    } else if (typeof v === 'object') {
+      // 只保留最常见的两个有意义摘要，其余一律降级成类型标记
+      const rec = v as Record<string, unknown>;
+      if (typeof rec.method === 'string' && typeof rec.url === 'string') {
+        out[k] = `${rec.method} ${rec.url}`;
+      } else if (typeof rec.statusCode === 'number') {
+        out[k] = `status ${rec.statusCode}`;
+      } else {
+        out[k] = Array.isArray(v) ? `[array ${v.length}]` : '[object]';
+      }
+    } else {
+      out[k] = String(v);
+    }
+  }
+  return out;
 }
 
 /**

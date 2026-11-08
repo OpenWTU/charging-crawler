@@ -237,7 +237,7 @@ watch(() => props.data, (v, old) => { if (v && !old) void loadExtras(); });
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--sp-2); }
 .panel-head h2 { font-size: var(--fs-14); margin: 0; }
 .chart svg { width: 100%; height: 90px; display: block; }
-.bar { fill: var(--brand-glass, #d1fae5); }
+.bar { fill: #34d399; opacity: 0.85; }
 .line { fill: none; stroke: var(--primary); stroke-width: 1.6; }
 .axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
 .alerts { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
