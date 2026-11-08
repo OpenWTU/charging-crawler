@@ -337,6 +337,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
 
     // 限流放最前面：否则错误 token 的请求不受限，可无限爆破注册令牌
     if (!rateOk(ip, 'register', 5, 86400)) {
+      markUpload(req, 'rate_limited');
       return reply.code(429).send({ ok: false, error: '注册过于频繁' });
     }
 
@@ -355,20 +356,24 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     }
 
     if (length <= 0 || length > 4096) {
+      markUpload(req, 'too_large');
       return reply.code(400).send({ ok: false, error: '请求体大小非法' });
     }
     let obj: Record<string, unknown>;
     try {
       obj = JSON.parse(body.toString('utf8'));
     } catch {
+      markUpload(req, 'invalid_json');
       return reply.code(400).send({ ok: false, error: '不是合法 JSON' });
     }
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+      markUpload(req, 'not_object');
       return reply.code(400).send({ ok: false, error: '请求体必须是 JSON 对象' });
     }
     const did = String(obj.device_id ?? '').trim();
     const secret = String(obj.secret ?? '').trim().toLowerCase();
     if (!/^[0-9a-fA-F-]{8,64}$/.test(did) || !/^[0-9a-f]{64}$/.test(secret)) {
+      markUpload(req, 'bad_params');
       return reply.code(400).send({ ok: false, error: 'device_id/secret 非法' });
     }
 
@@ -398,6 +403,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
         }
       }
       if (e.revoked || String(e.status || '') === 'revoked') {
+        markUpload(req, 'revoked');
         return reply
           .code(409)
           .send({ ok: false, code: 'revoked', error: '设备已被撤销，请联系管理员' });
@@ -428,6 +434,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       )
       .execute();
 
+    markUpload(req, autoApprove ? 'ok' : 'pending_created', { deviceId: did });
     return reply.send({ ok: true, device_id: did, pending: !autoApprove });
   });
 }
