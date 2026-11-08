@@ -76,26 +76,32 @@ public final class Updater {
         final Activity a = host.activity();
         if (host.isGone()) return; // Activity 已销毁：别弹一个没人看的 Toast
         Toast.makeText(a, "开始下载…", Toast.LENGTH_SHORT).show();
-        host.updatePool().execute(() -> {
-            try {
-                DebugLog.add("开始下载更新: " + apkPath);
-                java.io.File apk = Cloud.downloadApk(apkPath, a.getCacheDir(), sha256);
-                DebugLog.add("更新包下载完成: " + apk.length() + "B");
-                host.ui().post(() -> {
-                    if (!host.isGone()) {
-                        install(apk);
-                    }
-                });
-            } catch (Exception e) {
-                DebugLog.add("更新下载失败: " + e.getMessage());
-                host.ui().post(() -> {
-                    if (!host.isGone()) {
-                        Toast.makeText(a, "下载失败：" + e.getMessage(),
-                                Toast.LENGTH_LONG).show();
-                    }
-                });
-            }
-        });
+        try {
+            host.updatePool().execute(() -> {
+                try {
+                    DebugLog.add("开始下载更新: " + apkPath);
+                    java.io.File apk = Cloud.downloadApk(apkPath, a.getCacheDir(), sha256);
+                    DebugLog.add("更新包下载完成: " + apk.length() + "B");
+                    host.ui().post(() -> {
+                        if (!host.isGone()) {
+                            install(apk);
+                        }
+                    });
+                } catch (Exception e) {
+                    DebugLog.add("更新下载失败: " + e.getMessage());
+                    host.ui().post(() -> {
+                        if (!host.isGone()) {
+                            Toast.makeText(a, "下载失败：" + e.getMessage(),
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // M8：MainActivity.onDestroy 会 shutdownNow 线程池；
+            // 这里 isGone() 判定与提交之间被销毁就会抛未捕获异常（UI 线程闪退）
+            android.util.Log.w("Updater", "线程池已关闭，取消下载", e);
+        }
     }
 
     private void install(java.io.File apk) {

@@ -43,7 +43,11 @@ public final class OverviewCache {
     }
 
     private volatile Snapshot snapshot = null;
-    private volatile boolean loading = false;
+    // M7：原来是 volatile boolean + 检查-置位非原子 —— UI 线程与 JavaBridge 线程
+    // 可能同时通过判定，并发打两次 /api/overview，其中一次失败仍会 post server_online:false
+    // → 前端把在线态打成离线、隐藏页签，随后再被成功那次改回（页签闪烁）
+    private final java.util.concurrent.atomic.AtomicBoolean loading =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
     /** 是否已经尝试过至少一次拉取（没试过时乐观认为在线，避免首屏闪离线态） */
     private volatile boolean everFetched = false;
     /** 最近一次成功时间。与 snapshot 分开记：invalidateAndRefetch 清缓存时不清它 */
@@ -63,10 +67,9 @@ public final class OverviewCache {
         if (cur != null && now - cur.at < FETCH_THROTTLE_MS) {
             return;
         }
-        if (loading) {
+        if (!loading.compareAndSet(false, true)) {
             return;
         }
-        loading = true;
         host.overviewPool().execute(() -> {
             try {
                 String json = Cloud.fetchOverview().toString();
@@ -84,7 +87,7 @@ public final class OverviewCache {
                 host.postJs("window.__onOverview && window.__onOverview("
                         + JSONObject.quote("{\"server_online\":false}") + ")");
             } finally {
-                loading = false;
+                loading.set(false);
             }
         });
     }
