@@ -76,7 +76,8 @@ v-else-if="row.type === 'bool_or_null'" v-model="draft[row.key]" class="a-select
 </template>
 
 <script setup>
-import { computed, onActivated, reactive, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
+import { usePageLoad } from './usePageLoad.js';
 import { SUPER_ONLY_SETTINGS, useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
@@ -94,6 +95,9 @@ const editableRows = computed(() => Object.keys(schema.value)
   .filter((k) => k !== 'p2p_extra_peers')
   .map((k) => ({ key: k, ...schema.value[k] })));
 
+// L12（复审）：切回时不要丢掉未保存的草稿 —— 只在「首次加载」时初始化 draft
+let draftInited = false;
+
 async function load() {
   error.value = '';
   try {
@@ -101,7 +105,11 @@ async function load() {
     settings.value = d.settings || {};
     env.value = d.env || [];
     history.value = d.history || [];
-    for (const [k, v] of Object.entries(settings.value)) draft[k] = v;
+    // L12：切回时只更新 settings，不覆盖已编辑的草稿（否则未保存的修改被静默丢弃）
+    for (const [k, v] of Object.entries(settings.value)) {
+      if (!draftInited) draft[k] = v;
+    }
+    draftInited = true;
     const me = await apiGet('/admin/api/me');
     schema.value = me.settings_schema || {};
   } catch (e) {
@@ -120,5 +128,5 @@ async function save(key) {
 
 // S1（复审实测）：KeepAlive 让页面只加载一次 —— 切回来是旧数据。
 // 用 onActivated 替代 onMounted（首次挂载也会触发，不会双跑）。
-onActivated(load);
+usePageLoad(load);
 </script>

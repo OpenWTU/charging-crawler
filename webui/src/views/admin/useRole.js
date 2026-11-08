@@ -9,6 +9,14 @@
 import { inject, ref } from 'vue';
 
 export function useRole() {
+  // L5（复审）：默认 true 是为了不误伤，但会"掩盖忘记 provide" —— dev 下明确提示
+  if (import.meta.env.DEV) {
+    // inject 的默认值传 null 才能判断是否真的提供了
+    const probe = inject('adminRole', null);
+    if (probe === null) {
+      console.warn('[useRole] 没有 adminRole provider —— 写权限按默认放开，请检查是否忘记 provide');
+    }
+  }
   const role = inject('adminRole', ref('super'));
   const canWrite = inject('canWrite', ref(true));
   const isSuper = inject('isSuper', ref(true));

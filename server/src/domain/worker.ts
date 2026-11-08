@@ -505,12 +505,15 @@ export function startWorker(
   const state: { current: Promise<void> } = { current: Promise.resolve() };
   const tick = async (): Promise<void> => {
       // L2：每轮从 app_settings 重新取间隔（后台改完下一轮生效，不用重启）
+      // L5（复审）：调用方显式传了 intervalMs（测试/工具）就尊重它，只有走默认值时才读 settings
       let effectiveIntervalMs = intervalMs;
-      try {
-        const { getSetting } = await import('./adminsettings.js');
-        const sec = Number(await getSetting('worker_interval_sec'));
-        if (Number.isFinite(sec) && sec >= 60) effectiveIntervalMs = sec * 1000;
-      } catch { /* 用默认 */ }
+      if (intervalMs === WORKER_INTERVAL * 1000) {
+        try {
+          const { getSetting } = await import('./adminsettings.js');
+          const sec = Number(await getSetting('worker_interval_sec'));
+          if (Number.isFinite(sec) && sec >= 60) effectiveIntervalMs = sec * 1000;
+        } catch { /* 用默认 */ }
+      }
     if (stopped) return;
     state.current = (async () => {
       try {

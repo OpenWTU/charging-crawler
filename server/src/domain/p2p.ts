@@ -293,7 +293,11 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
 /** L11：peerMeta 只增不删（开了 trust 时外部节点可刷），定期清超过 24h 没活跃的 */
 function sweepPeerMeta(): void {
   if (peerMeta.size < 200) return;
-  const cutoff = new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 19).replace('T', ' ');
+  // L6（复审）：last_seen 是本地时间串（nowStr 生成），原来用 toISOString() 是 UTC → 偏 8 小时
+  const d = new Date(Date.now() - 24 * 3600_000);
+  const p2 = (x: number): string => String(x).padStart(2, '0');
+  const cutoff = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} `
+    + `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
   for (const [id, meta] of peerMeta) {
     if (meta.last_seen && meta.last_seen < cutoff) peerMeta.delete(id);
   }

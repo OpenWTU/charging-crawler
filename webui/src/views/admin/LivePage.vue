@@ -69,7 +69,8 @@ v-for="p in drawerPorts" :key="p.device_hex + ':' + p.port" class="port"
 </template>
 
 <script setup>
-import { computed, onActivated, ref } from 'vue';
+import { computed, ref } from 'vue';
+import { usePageLoad } from './usePageLoad.js';
 import { apiGet } from '../../api/adminApi.js';
 
 const q = ref('');
@@ -144,7 +145,7 @@ async function openArea(name) {
 
 // S1（复审实测）：KeepAlive 让页面只加载一次 —— 切回来是旧数据。
 // 用 onActivated 替代 onMounted（首次挂载也会触发，不会双跑）。
-onActivated(load);
+usePageLoad(load);
 </script>
 
 <style scoped>
@@ -180,10 +181,7 @@ onActivated(load);
 .bar-wrap { flex: 1; background: var(--neutral-bg, #f3f4f6); height: 6px; border-radius: 3px; overflow: hidden; min-width: 60px; }
 .bar-fill { display: block; height: 6px; }
 .empty { text-align: center; padding: 24px; }
-.drawer-mask {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35);
-  display: flex; justify-content: flex-end; z-index: 20;
-}
+  /* L15：抽屉已统一为全局 .a-drawer-mask，这条是死代码（已删） */
 .drawer {
   width: min(520px, 92vw); background: var(--card); padding: var(--sp-4);
   overflow: auto; display: grid; gap: var(--sp-3); align-content: start;

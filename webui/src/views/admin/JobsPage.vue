@@ -57,7 +57,8 @@
 </template>
 
 <script setup>
-import { onActivated, onBeforeUnmount, ref } from 'vue';
+import { onBeforeUnmount, ref } from 'vue';
+import { usePageLoad } from './usePageLoad.js';
 import { useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
@@ -111,6 +112,6 @@ async function purge() {
 
 // S1（复审实测）：KeepAlive 让页面只加载一次 —— 切回来是旧数据。
 // 用 onActivated 替代 onMounted（首次挂载也会触发，不会双跑）。
-onActivated(load);
+usePageLoad(load);
 onBeforeUnmount(() => { if (refreshTimer) clearTimeout(refreshTimer); });
 </script>

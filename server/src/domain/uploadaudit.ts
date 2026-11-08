@@ -50,7 +50,11 @@ export async function writeUploadAudit(
 ): Promise<void> {
   try {
     const ua = String(req.headers['user-agent'] ?? '').slice(0, 200);
-    const result = statusCode < 300 ? 'ok' : `http_${statusCode}`;
+    // L-c（复审）：reason 是部分成功（owner_rejected / duplicate）时，result 不能再写 ok ——
+    // 否则审计页看到 result=ok 却 reason=owner_rejected，排查时会以为是正常上传
+    const result = statusCode >= 300
+      ? `http_${statusCode}`
+      : (meta.reason === 'ok' ? 'ok' : 'partial');
     const detail = JSON.stringify({
       reason: meta.reason,
       device_id: meta.deviceId ?? null,

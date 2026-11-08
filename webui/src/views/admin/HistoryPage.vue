@@ -122,7 +122,8 @@ v-for="t in tabs" :key="t.key" class="a-btn sm" :class="{ primary: tab === t.key
 </template>
 
 <script setup>
-import { onActivated, ref } from 'vue';
+import { ref } from 'vue';
+import { usePageLoad } from './usePageLoad.js';
 import { useRole } from './useRole.js';
 import { apiDelete, apiGet } from '../../api/adminApi.js';
 
@@ -267,7 +268,7 @@ async function doExport() {
     a.href = url;
     a.download = `${exportTable.value}.csv`;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000); // L6：立即 revoke 会让部分浏览器截断下载
     exportTable.value = '';
   } catch (e) {
     error.value = e.message || '导出失败';
@@ -277,7 +278,7 @@ async function doExport() {
 }
 
 // L13（复审）：轻查询，切回也刷新（否则长会话里快照流停在进入时刻）
-onActivated(loadSnaps);
+usePageLoad(loadSnaps);
 </script>
 
 <style scoped>

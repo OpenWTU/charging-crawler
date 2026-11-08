@@ -32,7 +32,7 @@ v-for="m in group.items" :key="m.key" class="nav-item"
         </p>
         <!-- M29：原来是一长串 v-if —— 每次切 tab 都销毁重建，查询条件/滚动位置/筛选全丢。
              改成动态组件 + KeepAlive：切回来状态还在。 -->
-        <KeepAlive>
+        <KeepAlive :max="18">
           <component :is="currentPage" v-bind="currentProps" @changed="load" @go="tab = $event" @refresh="load" />
         </KeepAlive>
       </main>

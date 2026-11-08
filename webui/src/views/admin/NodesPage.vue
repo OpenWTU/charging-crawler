@@ -134,7 +134,8 @@
 </template>
 
 <script setup>
-import { onActivated, reactive, ref } from 'vue';
+import { reactive, ref } from 'vue';
+import { usePageLoad } from './usePageLoad.js';
 import { useRole } from './useRole.js';
 import { apiDelete, apiGet, apiFetch, apiPost } from '../../api/adminApi.js';
 
@@ -209,5 +210,5 @@ async function disconnect(peerId) {
 
 // S1（复审实测）：KeepAlive 让页面只加载一次 —— 切回来是旧数据。
 // 用 onActivated 替代 onMounted（首次挂载也会触发，不会双跑）。
-onActivated(load);
+usePageLoad(load);
 </script>

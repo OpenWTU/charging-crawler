@@ -89,8 +89,9 @@ v-if="canWrite && d.status !== 'revoked'" class="a-btn sm danger"
 </template>
 
 <script setup>
-import { computed, onActivated, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRole } from './useRole.js';
+import { usePageLoad } from './usePageLoad.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
 const filters = [
@@ -184,7 +185,8 @@ async function del(ids) {
 }
 
 // S1：KeepAlive 下切回来要重新拉数据
-onActivated(async () => {
+// L14：改用 usePageLoad（同时挂 onMounted + onActivated 并去重）
+usePageLoad(async () => {
   await load();
   try {
     const s = await apiGet('/admin/api/settings');

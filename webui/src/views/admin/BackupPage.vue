@@ -76,7 +76,7 @@ async function download(name) {
     a.href = url;
     a.download = name;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000); // L6：立即 revoke 会让部分浏览器截断下载
   } catch (e) {
     error.value = e.message || '下载失败';
   }

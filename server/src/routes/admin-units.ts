@@ -232,7 +232,17 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
          WHERE name = ${newName} AND area_id <> ${areaId}
       `.execute(db);
       if (Number(dup.rows[0]?.n ?? 0) > 0) {
-        return reply.code(409).send({ ok: false, error: '该区域名已存在，请改用「合并」' });
+        // L-d（复审）：撞到的可能是一个"已软删"的区域 —— 那时不能提示"改用合并"（合并会 404）
+        const dupRow = await sql<{ deleted_at: string | null }>`
+          SELECT deleted_at FROM areas WHERE name = ${newName} AND area_id <> ${areaId} LIMIT 1
+        `.execute(db);
+        const isDeleted = Boolean(dupRow.rows[0]?.deleted_at);
+        return reply.code(409).send({
+          ok: false,
+          error: isDeleted
+            ? `「${newName}」是一个已删除的区域名，请先恢复它，或换一个名称`
+            : '该区域名已存在，请改用「合并」',
+        });
       }
       const old = await sql<{ name: string }>`SELECT name FROM areas WHERE area_id = ${areaId}`.execute(db);
       const oldName = old.rows[0]?.name;
@@ -340,7 +350,7 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
   });
 
   /** 重复区域检测：名称相似（去空格/标点后 Levenshtein）+ 坐标距离 < 50m */
-  scope.get('/admin/api/units/duplicates', async () => {
+  scope.get('/admin/api/units/duplicates', async (_req, reply) => {
     const db = getDb();
     const res = await sql<{ area_id: string; name: string; lat: number | null; lng: number | null }>`
       SELECT area_id, name, lat, lng FROM areas WHERE COALESCE(deleted_at, '') = ''
@@ -349,11 +359,12 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
     // S7：O(n²) 的 Levenshtein 在同步线程里跑，2000 区域实测 6.8 秒会拖死全站
     const MAX_AREAS = 300;
     if (rows.length > MAX_AREAS) {
-      return {
+      // L1（复审）：原来返回 HTTP 200 + ok:false —— 只看状态码的客户端会当成"没有重复区域"
+      return reply.code(409).send({
         ok: false,
         pairs: [],
         error: `区域数 ${rows.length} 超过 ${MAX_AREAS}，全量两两比对会阻塞服务，请先用搜索缩小范围`,
-      };
+      });
     }
     const norm = (s: string): string => s.replace(/[\s\-_()（）·]/g, '').toLowerCase();
 

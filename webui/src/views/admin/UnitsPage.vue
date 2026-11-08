@@ -82,7 +82,8 @@ v-for="p in ports" :key="p.device_hex + ':' + p.port" class="port"
 </template>
 
 <script setup>
-import { onActivated, ref } from 'vue';
+import { ref } from 'vue';
+import { usePageLoad } from './usePageLoad.js';
 import { useRole } from './useRole.js';
 import { apiDelete, apiGet, apiPost } from '../../api/adminApi.js';
 
@@ -193,7 +194,7 @@ async function merge(a, b) {
 
 // S1（复审实测）：KeepAlive 让页面只加载一次 —— 切回来是旧数据。
 // 用 onActivated 替代 onMounted（首次挂载也会触发，不会双跑）。
-onActivated(loadAreas);
+usePageLoad(loadAreas);
 </script>
 
 <style scoped>
