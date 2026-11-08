@@ -556,15 +556,35 @@ public final class Cloud {
         }
     }
 
+    /**
+     * S3：安装包地址白名单。
+     *
+     * 曾经用 `url.startsWith(base())` —— base() 是 NodeDiscovery.currentBase()，
+     * 可以被状态页的节点卡片改到任意 http(s) 主机。恶意/被劫持节点同时提供
+     * /api/version（决定 sha256）与 APK，校验就成了"自己跟自己比"。
+     * 这里改成**常量集合**：只认官方域名与 GitHub Release，不含任何动态地址。
+     */
+    private static final String[] ALLOWED_APK_PREFIXES = {
+        "https://github.com/OpenWTU/charging-crawler/releases/download/",
+        "https://charge.lizishuo.cn/",
+    };
+
+    private static boolean isAllowedApkUrl(String url) {
+        if (url == null) return false;
+        for (String prefix : ALLOWED_APK_PREFIXES) {
+            if (url.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
     /** 下载 APK 到 cacheDir，返回本地文件。 */
     public static File downloadApk(String apkPath, File cacheDir, String expectedSha) throws Exception {
         String url = apkPath.startsWith("http") ? apkPath : base() + apkPath.replaceFirst("^/", "");
         if (expectedSha == null || !expectedSha.matches("[0-9a-fA-F]{64}")) {
             throw new IOException("缺少有效的 sha256，已拒绝下载");
         }
-        if (!url.startsWith(base())
-                && !url.startsWith("https://github.com/OpenWTU/charging-crawler/releases/download/")) {
-            throw new IOException("非法的安装包地址");
+        if (!isAllowedApkUrl(url)) {
+            throw new IOException("非法的安装包地址（只允许官方域名与 GitHub Release）");
         }
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(15000);
