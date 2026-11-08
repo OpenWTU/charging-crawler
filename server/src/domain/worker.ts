@@ -60,7 +60,9 @@ export function stableStringify(obj: unknown): string {
 export function snapshotDigest(payload: Record<string, unknown>): string {
   const stable: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(payload)) {
-    if (k === 'captured_at' || k === 'received_at' || k === 'client_ip') continue;
+    // M5（复审）：_suspect 是本地判定标记，不该影响"内容是否相同"的判断 ——
+    // 否则同一条数据 accept 版与 suspect 版摘要不同，会被存两份。
+    if (k === 'captured_at' || k === 'received_at' || k === 'client_ip' || k === '_suspect') continue;
     stable[k] = v;
   }
   return createHash('sha256').update(stableStringify(stable), 'utf8').digest('hex');
@@ -471,16 +473,16 @@ export async function workerRound(
     await sql`DELETE FROM pile_samples WHERE ts < ${cutoff}`.execute(db);
     await sql`DELETE FROM upload_audit WHERE ts < ${cutoff}`.execute(db);
     // M22：审计与互校明细也按保留期清（p2p_validation.detail 每条带整份 areas，最占空间）
-    await sql`DELETE FROM p2p_validation WHERE created_at < ${cutoff}`.execute(db).catch((e) => {
+    await sql`DELETE FROM p2p_validation WHERE ts < ${cutoff}`.execute(db).catch((e) => {
       logger.warn({ err: e }, '[worker] 清理 p2p_validation 失败');
     });
     await sql`DELETE FROM admin_audit WHERE ts < ${cutoff}`.execute(db).catch((e) => {
       logger.warn({ err: e }, '[worker] 清理 admin_audit 失败');
     });
-    await sql`DELETE FROM config_history WHERE changed_at < ${cutoff}`.execute(db).catch((e) => {
+    await sql`DELETE FROM config_history WHERE ts < ${cutoff}`.execute(db).catch((e) => {
       logger.warn({ err: e }, '[worker] 清理 config_history 失败');
     });
-    await sql`DELETE FROM alert_state WHERE updated_at < ${cutoff}`.execute(db).catch((e) => {
+    await sql`DELETE FROM alert_state WHERE last_at < ${cutoff}`.execute(db).catch((e) => {
       logger.warn({ err: e }, '[worker] 清理 alert_state 失败');
     });
   } catch (e) {

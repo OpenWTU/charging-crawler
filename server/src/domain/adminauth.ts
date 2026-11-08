@@ -226,7 +226,10 @@ export function noteLoginFailure(ip: string, username?: string): boolean {
     // 就能把该 IP 下**所有**管理员锁 10 分钟（TRUST_PROXY=false 时是全站共享一个 IP）。
     // 现在 ip 桶只做统计/告警，锁定只认 ipu 桶。
     const isIpBucket = key.startsWith('ip:');
-    if (!isIpBucket && s.fails >= LOGIN_MAX_FAILS) {
+    // M8（复审）：ip 桶完全不锁会放开「跨用户名无限试」—— 每个用户名 5 次配额、用户名无限。
+    // 保留一个宽松上限（40 次/10 分钟）只用来挡爆破，严格阈值仍只作用于 ipu 桶。
+    const threshold = isIpBucket ? LOGIN_MAX_FAILS * 8 : LOGIN_MAX_FAILS;
+    if (s.fails >= threshold) {
       s.lockedUntil = now + LOGIN_LOCK_SEC;
       locked = true;
     }

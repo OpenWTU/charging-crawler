@@ -218,6 +218,7 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
     // M3（复审实测）：原来这里就 return 400，而改名块在它后面 —— 导致「只改名」必然
     // 报「没有要修改的字段」。判断挪到 parts 组装完之后（下面已有一份）。
 
+    let renamed = false;
     // M5：改名要传播到 area_samples / controllers，否则历史按旧名分组、live 显示旧名
     let newName: string | null = null;
     if (body.name !== undefined) {
@@ -243,13 +244,20 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
           await sql`UPDATE areas SET name = ${newName} WHERE area_id = ${areaId}`.execute(trx);
         });
         await audit({ username: admin.username, action: 'area_rename', target: `${oldName} → ${newName}`, ip: req.ip });
-        return { ok: true, renamed: true };
+        // S4（复审实测）：这里原来直接 return —— 同一请求里的 lat/lng 被静默丢弃。
+        // 改名后继续往下走坐标更新（下面按 parts 处理）。
+        renamed = true;
       }
     }
-    if (newName !== null) {
+    if (newName !== null && !renamed) {
+      // 未改名成功（oldName === newName）时才需要走 SET name；改过名的已在事务里写过
       parts.push(sql`name = ${newName}`);
     }
-    if (!parts.length) return reply.code(400).send({ ok: false, error: '没有要修改的字段' });
+    if (!parts.length) {
+      // 只改名（事务里已 UPDATE 完 areas/area_samples/controllers）→ 直接成功
+      if (renamed) return { ok: true, renamed: true };
+      return reply.code(400).send({ ok: false, error: '没有要修改的字段' });
+    }
 
     // 拼接 SET 片段
     const setSql = parts.reduce((acc, p, i) => (i === 0 ? p : sql`${acc}, ${p}`), sql`` as ReturnType<typeof sql>);
@@ -258,7 +266,7 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
     const r = await q.execute(db);
     if (!r.numAffectedRows) return reply.code(404).send({ ok: false, error: '区域不存在' });
     await audit({ username: admin.username, action: 'area_update', target: areaId, ip: req.ip, detail: body });
-    return { ok: true };
+    return { ok: true, ...(renamed ? { renamed: true } : {}) };
   });
 
   scope.post('/admin/api/units/area/merge', async (req, reply) => {
@@ -459,6 +467,12 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
     const ownerRaw = body.owner_device;
     const owner = ownerRaw === null || ownerRaw === undefined ? '' : String(ownerRaw).trim();
     const db = getDb();
+    // L-b（复审）：不校验存在性的话，拼错一个 device_id 就会把桩锁给一个不存在的设备
+    let warn: string | undefined;
+    if (owner) {
+      const known = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM devices WHERE device_id = ${owner}`.execute(db);
+      if (!Number(known.rows[0]?.n ?? 0)) warn = `设备 ${owner} 尚未注册，归属已写入但不会有任何设备能上报`;
+    }
     const r = owner
       ? await sql`UPDATE controllers SET owner_device = ${owner} WHERE device_hex = ${deviceHex}`.execute(db)
       : await sql`UPDATE controllers SET owner_device = NULL WHERE device_hex = ${deviceHex}`.execute(db);
@@ -470,6 +484,6 @@ export async function registerAdminUnitRoutes(scope: FastifyInstance): Promise<v
       ip: req.ip,
       detail: { owner: owner || null },
     });
-    return { ok: true, owner: owner || null };
+    return { ok: true, owner: owner || null, ...(warn ? { warn } : {}) };
   });
 }

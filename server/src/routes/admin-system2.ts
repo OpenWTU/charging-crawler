@@ -310,7 +310,10 @@ export async function registerAdminSystemRoutes(scope: FastifyInstance): Promise
     // M7（复审实测）：直接在原文上匹配会误杀字符串字面量 ——
     //   `where detail like '%devices%'` 被判 403，带这些词的正常查询全不可用。
     // 先把单引号/双引号里的内容抹掉再匹配（不留空串，避免把 '' 拼成非法 SQL）。
-    const scannable = text.replace(/'(?:[^']|'')*'/g, "''").replace(/"(?:[^"]|"")*"/g, '""');
+    // S1-③（复审实测）：双引号在 SQLite 里是**标识符**不是字符串 ——
+    // 上一版把 "admin_users" 的内容也抹成 ""，等于把表名藏起来，
+    // `select * from "admin_users"` 实测 200 且拿到 scrypt 哈希。只剥离单引号。
+    const scannable = text.replace(/'(?:[^']|'')*'/g, "''");
     for (const t of SECRET_TABLES) {
       if (new RegExp(`\\b${t}\\b`, 'i').test(scannable)) {
         return reply.code(403).send({
@@ -320,7 +323,8 @@ export async function registerAdminSystemRoutes(scope: FastifyInstance): Promise
       }
     }
     // M7：devices 不必整表禁读 —— 只禁敏感列名出现即可（device_id/model/status 这些应该可查）
-    if (/\\bsecret_enc\\b|\\bpass_hash\\b|\\badmin_users\\b/i.test(scannable)) {
+    // M7-②（复审实测）：这里原来写成了 /\\b.../ （正则字面量里 \\b = 反斜杠+b），永不命中。
+    if (/\bsecret_enc\b|\bpass_hash\b|\badmin_users\b|\badmin_sessions\b/i.test(scannable)) {
       return reply.code(403).send({
         ok: false,
         error: '不允许查询口令哈希/设备密钥字段',

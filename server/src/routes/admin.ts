@@ -208,7 +208,8 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         const norm = (h: string): string => h
           .replace(/^([^:]+):80$/, '$1')
           .replace(/^([^:]+):443$/, '$1');
-        if (hostRaw && norm(o.host.toLowerCase()) !== norm(hostRaw)) {
+        // L-e（复审）：缺 Host 时原来 fail-open（跳过校验）—— 直接拒绝更安全
+        if (!hostRaw || norm(o.host.toLowerCase()) !== norm(hostRaw)) {
           return reply.code(403).send({ ok: false, error: '跨站请求被拒绝' });
         }
       } catch {

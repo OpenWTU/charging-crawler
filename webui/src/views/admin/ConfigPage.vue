@@ -29,7 +29,9 @@ v-else-if="row.type === 'bool_or_null'" v-model="draft[row.key]" class="a-select
             <td class="a-small a-muted">{{ row.note || '' }}</td>
             <td>
           <button v-if="canWrite && (isSuper || !SUPER_ONLY_SETTINGS.includes(row.key))" class="a-btn sm" @click="save(row.key)">保存</button>
-          <span v-else class="a-small a-muted">仅超管可改</span>
+          <span v-else class="a-small a-muted">
+            {{ SUPER_ONLY_SETTINGS.includes(row.key) ? '仅超管可改' : '需要运维及以上权限' }}
+          </span>
         </td>
           </tr>
         </tbody>
@@ -84,7 +86,9 @@ const env = ref([]);
 const history = ref([]);
 const draft = reactive({});
 const error = ref('');
-const { isSuper } = useRole();
+// S6: 原来只解构 isSuper，模板用 canWrite 得到 undefined
+// → 超管也看不到任何保存按钮（生产构建剥掉了 dev 警告，CDP 抓不到）
+const { isSuper, canWrite } = useRole();
 
 const editableRows = computed(() => Object.keys(schema.value)
   .filter((k) => k !== 'p2p_extra_peers')

@@ -231,9 +231,17 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     // 而 ports 是独立的 obj.ports、不进 payload —— 于是「区域计数不变、但带了新端口数据」的上传
     // 会被判重复整包丢弃（实测另一个桩的端口状态完全没写进去，App 还收到 ok:true）。
     // 修法：把规范化后的端口一并纳入摘要（ports 变了就不是重复）。
+    // S1-②（复审实测）：stableStringify 对数组保留原顺序 —— App 每次组包时 ports 的顺序
+    // 不保证稳定，同一批端口换个顺序就会被判成不同。这里规范化后再哈希。
+    const normalizedPorts = cleanPortsResult
+      .map((it) => ({
+        device_hex: it.device_hex,
+        ports: [...it.ports].sort((a, b) => String(a.port).localeCompare(String(b.port))),
+      }))
+      .sort((a, b) => a.device_hex.localeCompare(b.device_hex));
     const digest = snapshotDigest({
       ...payload,
-      ports: cleanPortsResult,
+      ports: normalizedPorts,
     } as unknown as Record<string, unknown>);
     const dupCutoff = nowStr(new Date(Date.now() - 30 * 60 * 1000));
     const dupRes = await sql<{ id: number }>`
@@ -286,7 +294,9 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
             client_ip: String(req.socket.remoteAddress ?? ''),
             device_id: deviceId || null,
             real_ip: ip,
-            body_sha256: snapshotDigest(payload as unknown as Record<string, unknown>),
+            // S1（复审实测）：这里原来用不含 ports 的摘要，而上面比较用的是含 ports 的 ——
+            // 两处不一致导致去重 100% 不命中（连空 ports 都对不上），变成死代码。
+            body_sha256: digest,
             payload: JSON.stringify(payload),
           })
           .executeTakeFirst();
@@ -413,6 +423,20 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     // P2P 广播（未启用时 no-op）：把新快照同步给白名单内节点
     void broadcastSnapshot(payload as unknown as Record<string, unknown>);
 
+    // M2（复审实测）：上传后没失效 /api/now 缓存 —— App 上传完立刻刷新首页仍看到旧数据 60 秒。
+
+
+    try {
+
+
+      const { invalidateNowCache } = await import('./state.js');
+
+
+      invalidateNowCache();
+
+
+    } catch { /* 循环依赖时忽略 */ }
+
     return reply.send({
       ok: true,
       id: snapshotId,
@@ -429,10 +453,17 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
    * M1（复审实测：之前 CHANGELOG 说补了、实际没写入）：webui 的「手动刷新」一直打这个端点。
    * 拉一轮抓取并返回结果；带限流，避免被当免费算力。
    */
+  // M1（复审）：refreshRound 没有互斥，公开接口 6 次/分钟就能和 worker 自动轮次并行跑同一批 token
+  let refreshBusy = false;
+
   app.post('/api/refresh', async (req, reply) => {
     if (!rateOk(req.ip, 'refresh', 6, 60)) {
       return reply.code(429).send({ ok: false, error: '刷新过于频繁，请稍后再试' });
     }
+    if (refreshBusy) {
+      return reply.code(429).send({ ok: false, error: '已有一轮抓取在进行，请稍后再试' });
+    }
+    refreshBusy = true;
     try {
       const { refreshRound } = await import('../domain/worker.js');
       const result = await refreshRound();
@@ -441,13 +472,18 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
         const { invalidateNowCache } = await import('./state.js');
         invalidateNowCache();
       } catch { /* 循环依赖时忽略 */ }
-      const ok = !/^(error|fail|no-token)/i.test(result);
+      // M1（复审实测）：原来用「不以 error/fail/no-token 开头」判定 ——
+      // `areas=no-token|ports=no-token` 会被判成 ok:true，但实际什么都没抓到。
+      // 改成正向判定。
+      const ok = /(^|\|)areas=ok/i.test(result) || /(^|\|)ports=ok/i.test(result);
       return reply.send({ ok, result });
     } catch (e) {
       return reply.code(500).send({
         ok: false,
         error: e instanceof Error ? e.message : '刷新失败',
       });
+    } finally {
+      refreshBusy = false;
     }
   });
 

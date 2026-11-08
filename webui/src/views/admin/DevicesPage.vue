@@ -55,7 +55,7 @@ v-if="canWrite && d.status !== 'revoked'" class="a-btn sm danger"
         <span class="a-small">已选 {{ checked.length }} 台</span>
         <button v-if="canWrite" class="a-btn sm primary" @click="approve(checked)">批量审批</button>
         <button v-if="canWrite" class="a-btn sm danger" @click="revoke(checked, true)">批量拉黑</button>
-        <button class="a-btn sm" @click="del(checked)">批量删除</button>
+        <button v-if="canWrite" class="a-btn sm" @click="del(checked)">批量删除</button>
       </div>
     </section>
 

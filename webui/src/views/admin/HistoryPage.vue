@@ -122,7 +122,7 @@ v-for="t in tabs" :key="t.key" class="a-btn sm" :class="{ primary: tab === t.key
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onActivated, ref } from 'vue';
 import { useRole } from './useRole.js';
 import { apiDelete, apiGet } from '../../api/adminApi.js';
 
@@ -276,7 +276,8 @@ async function doExport() {
   }
 }
 
-onMounted(loadSnaps);
+// L13（复审）：轻查询，切回也刷新（否则长会话里快照流停在进入时刻）
+onActivated(loadSnaps);
 </script>
 
 <style scoped>
