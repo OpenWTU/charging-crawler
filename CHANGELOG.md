@@ -6,6 +6,17 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.3] - 2026-11-08
+
+### 修复（CI APK 构建的真正根因）
+- **ci.yml 的 android job 缺 `env:`** —— `CHARGE_ANDROID_SDK` / `CHARGE_JAVA_HOME` 为空时，
+  `build.py` 会回落到 Windows 默认路径 `C:\Android\sdk`，在 ubuntu 上必然不存在。
+  （这个 job 是 v2.4.0 我新加的，加的时候漏了 env）
+- **`run()` 回退到 v2.3.8 的行为**（`check=True`、不捕获输出）——
+  v2.4.2 的 `capture_output=True` + 自己打印可能改变了子进程行为，而 v2.3.8 的 CI 是通过的。
+  可观测性改由 workflow 的 `set -x` + 环境打印承担。
+- 两个 workflow 的 APK 步骤都加了诊断（`set -x`、SDK/JDK 路径、python 版本、build-tools/platforms 列表）
+
 ## [v2.4.2] - 2026-11-08
 
 ### 修复

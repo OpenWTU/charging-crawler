@@ -73,25 +73,10 @@ if VERSION_CODE != _derived:
 
 
 def run(cmd):
-    """执行外部命令。
-
-    v2.4.0/v2.4.1 的 CI 失败时只有 CalledProcessError 堆栈，**看不到 aapt2/d8/javac 的真实报错**
-    （subprocess 默认不捕获输出）。这里捕获并在失败时打印尾部，CI 日志里能直接定位。
-    """
-    argv = [str(c) for c in cmd]
-    r = subprocess.run(argv, env=ENV, capture_output=True, text=True, errors="replace")
-    if r.stdout and r.stdout.strip():
-        # javac/aapt2 的警告也打出来（截断避免刷屏）
-        print(r.stdout.strip()[-3000:])
-    if r.returncode != 0:
-        print("[build][ERROR] 命令失败（exit {}）: {}".format(r.returncode, " ".join(argv)))
-        if r.stdout and r.stdout.strip():
-            print("--- stdout（尾部）---")
-            print(r.stdout.strip()[-4000:])
-        if r.stderr and r.stderr.strip():
-            print("--- stderr（尾部）---")
-            print(r.stderr.strip()[-4000:])
-        raise SystemExit(r.returncode)
+    # 与 v2.3.8 完全一致：check=True、stdout/stderr 直接继承到 CI 日志。
+    # （v2.4.2 试过 capture_output=True + 自己打印，但 CI 仍在同一位置失败，
+    #   先回到已知可工作的行为，把可观测性交给 workflow 的 set -x）
+    subprocess.run([str(c) for c in cmd], check=True, env=ENV)
 
 
 def main():

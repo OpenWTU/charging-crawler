@@ -79,7 +79,15 @@ jobs:
           CHARGE_SECRETS_DIR: /tmp/charge-secrets
           CHARGE_VERSION_NAME: ${{ env.VERSION_NAME }}
           CHARGE_VERSION_CODE: ${{ env.VERSION_CODE }}
-        run: python3 android/build.py --no-version-json --allow-stale-web
+        run: |
+          set -x  # M-diagnose：失败时能看到完整命令与环境
+          echo "ANDROID_HOME=$CHARGE_ANDROID_SDK"
+          echo "JAVA_HOME=$CHARGE_JAVA_HOME"
+          python3 --version
+          ls "$CHARGE_ANDROID_SDK/build-tools/" || true
+          ls "$CHARGE_ANDROID_SDK/platforms/" || true
+          ls "$CHARGE_JAVA_HOME/bin/javac" || true
+          python3 android/build.py --no-version-json --allow-stale-web
 
       - name: 校验 APK 产物
         run: |

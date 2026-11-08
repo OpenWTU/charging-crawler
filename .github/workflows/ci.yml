@@ -105,7 +105,20 @@ jobs:
           pnpm run build
 
       - name: 编译 APK（--no-version-json，不写 version_clean.json）
-        run: python3 android/build.py --no-version-json --allow-stale-web
+        env:
+          # 关键：CI 的 SDK/JDK 在 ubuntu 的路径，build.py 靠这两个变量定位
+          # （不传就会回落到 Windows 默认值 C:\Android\sdk → 一定失败）
+          CHARGE_ANDROID_SDK: ${{ env.ANDROID_HOME }}
+          CHARGE_JAVA_HOME: ${{ env.JAVA_HOME }}
+        run: |
+          set -x  # M-diagnose：失败时能看到完整命令与环境
+          echo "ANDROID_HOME=$CHARGE_ANDROID_SDK"
+          echo "JAVA_HOME=$CHARGE_JAVA_HOME"
+          python3 --version
+          ls "$CHARGE_ANDROID_SDK/build-tools/" || true
+          ls "$CHARGE_ANDROID_SDK/platforms/" || true
+          ls "$CHARGE_JAVA_HOME/bin/javac" || true
+          python3 android/build.py --no-version-json --allow-stale-web
 
       - name: 编译并运行 Java 单元测试（Packets/Sign 向量）
         run: |
