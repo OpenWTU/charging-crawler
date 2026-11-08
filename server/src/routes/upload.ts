@@ -36,7 +36,7 @@ import { broadcastSnapshot } from '../domain/p2p.js';
 import { snapshotDigest } from '../domain/worker.js';
 import { getSetting } from '../domain/adminsettings.js';
 import { markUpload, writeUploadAudit, type UploadMeta } from '../domain/uploadaudit.js';
-import { REGISTER_TOKEN } from '../config.js';
+import { recordValidation, validateIncoming } from '../domain/p2pvalidate.js';
 import { logger } from '../logger.js';
 
 /** 常量时间比较 hex 字符串（Python 用 hmac.compare_digest） */
@@ -280,10 +280,54 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
 
     // 单事务落库
 
+    // ---- 数据合理性校验（2026-11-08 新增）----
+    // 以前 App 上传只有形状校验（cleanPort / validatePayload），任何已注册设备都能把
+    // 「39 个区全空闲」直接写进库 —— HMAC 验签挡不住这种情况（secret 是注册时送给它的）。
+    // 这里复用跨节点互校的算法：与本节点 [captured_at ± window] 的历史快照按区域名对齐，
+    // 算空闲率偏差 + 故障差。
+    //
+    // **warn 语义：只标记不丢**。真实场景里「一放学整片从满变空」本来就会大幅跳变，
+    // strict 会误杀正常数据；可疑快照打 `_suspect` 标记，后台可按标记筛。
+    const stamp = nowStr();
+    let suspectFlag = false;
+    try {
+      const vr = await validateIncoming(
+        payload as unknown as Record<string, unknown>, stamp, db, { mode: 'warn' },
+      );
+      if (vr.decision !== 'accept' || vr.deviation !== null) {
+        await recordValidation(
+          `dev:${deviceId ?? 'anon'}`,
+          stamp,
+          (payload as unknown as Record<string, unknown>).captured_at as string | undefined,
+          digest,
+          vr,
+          db,
+        );
+      }
+      suspectFlag = vr.decision === 'suspect' || vr.reason === 'deviation_exceeded';
+      if (suspectFlag) {
+        logger.warn(
+          {
+            device: deviceId,
+            deviation: vr.deviation,
+            reason: vr.reason,
+            comparable: vr.comparable,
+            base_snapshot_id: vr.baseSnapshotId,
+          },
+          '[upload] 数据与本地历史偏差偏大，已标记 suspect（仍入库）',
+        );
+      }
+    } catch (e) {
+      // 保险丝：校验自身出错绝不能掐断上传
+      logger.warn({ err: e }, '[upload] 合理性校验异常，按通过处理');
+    }
+    const payloadForStore = suspectFlag
+      ? { ...(payload as unknown as Record<string, unknown>), _suspect: true }
+      : payload;
+
     let snapshotId = 0;
     try {
       await db.transaction().execute(async (trx) => {
-        const stamp = nowStr();
         const ins = await trx
           .insertInto('snapshots')
           .values({
@@ -298,7 +342,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
             // S1（复审实测）：这里原来用不含 ports 的摘要，而上面比较用的是含 ports 的 ——
             // 两处不一致导致去重 100% 不命中（连空 ports 都对不上），变成死代码。
             body_sha256: digest,
-            payload: JSON.stringify(payload),
+            payload: JSON.stringify(payloadForStore),
           })
           .executeTakeFirst();
         snapshotId = Number(ins?.insertId ?? 0);
@@ -475,17 +519,12 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(429).send({ ok: false, error: '注册过于频繁' });
     }
 
-    // 注册令牌（REGISTER_TOKEN 未配置时不校验）。
+    // 2026-11-08：注册令牌已移除。
     //
-    // ⚠️ 令牌不对**不返回 403**，而是记一个标记、后面伪装成功（见 `tokenOk` 的用法）：
-    //   - 旧版 App 不带该头，硬 403 会让用户看到「请更新 App 并反复重试」；
-    //   - 但不入库的设备后续上传会失败：`/api/snapshot` 要按 device_id 从 devices
-    //     取 secret_enc 验签，查不到就 401「签名校验失败（设备未注册或已撤销）」。
-    //   所以「对外成功、实际不入库」既能兼容旧版，也不会让野生设备真的写进数据。
-    let tokenOk = true;
-    if (REGISTER_TOKEN) {
-      tokenOk = String(req.headers['x-register-token'] ?? '') === REGISTER_TOKEN;
-    }
+    // 原因：令牌硬编码在 APK 里（`Cloud.java`），反编译一次就能拿到，安全强度等同 UA
+    // —— 而它还要在多节点间保持一致，维护成本远大于收益。
+    // 准入的实际防线是：注册限流(5/天/IP) + 上传限流(12/分/IP) + IP/设备拉黑 + HMAC 验签。
+    // 需要更强准入时用「配置中心 → device_auto_approve 关」，新设备变 pending 等人工批。
 
     if (length <= 0 || length > 4096) {
       markUpload(req, 'too_large');
@@ -541,18 +580,6 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
           .code(409)
           .send({ ok: false, code: 'revoked', error: '设备已被撤销，请联系管理员' });
       }
-    }
-
-    // 未带有效注册令牌：**不入库**，但对外返回和正常注册一模一样的成功响应。
-    // 放在 existed 分支之后，所以「库里已有的设备」重新注册不受令牌影响
-    // （装机量不变的前提下，老用户不会被这条规则挡住）。
-    if (!tokenOk) {
-      markUpload(req, 'register_no_token', { deviceId: did, detail: `ip=${ip} ua=${ua.slice(0, 60)}` });
-      logger.info(
-        { ip, ua: ua.slice(0, 80), device_id: did },
-        '[register] 未带有效注册令牌：不入库，对外返回成功',
-      );
-      return reply.send({ ok: true, device_id: did, pending: false, status: 'approved' });
     }
 
     const stamp = nowStr();

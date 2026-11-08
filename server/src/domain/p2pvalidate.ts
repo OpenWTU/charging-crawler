@@ -149,9 +149,14 @@ async function findBaseline(
   const res = await sql<{ id: number; payload: string; captured_at: string | null }>`
     SELECT id, payload, captured_at FROM snapshots
      WHERE captured_at IS NOT NULL
-       -- M9：只信本节点自己采的数据（device_id 非空 = App 上传/本机 worker），
-       -- 否则恶意节点先发一条"基准"就能让所有诚实节点被判偏差
-       AND device_id IS NOT NULL
+       -- M9：只信本节点自己采的数据，否则恶意节点先发一条"基准"就能让所有诚实节点被判偏差。
+       -- 2026-11-08 修正：原条件只有 device_id IS NOT NULL，而本机 worker 采的快照
+       -- device_id 恰恰是 NULL（见 worker.ts 写入 snapshots 的地方），
+       -- 于是 587 条 worker 快照全被排除、基准池只剩 42%，互校长期空转
+       -- （线上 p2p_validation 表 0 行即由此而来）。
+       -- 用 client_ip 补回本机来源：server 是 worker、127.0.0.1 是本机直连。
+       -- P2P 写入的 client_ip 固定是 'p2p'，所以这条放宽不会让外部节点变成基准。
+       AND (device_id IS NOT NULL OR client_ip IN ('server', '127.0.0.1'))
        AND captured_at >= ${from} AND captured_at <= ${to}
      ORDER BY
        CASE WHEN device_id IS NOT NULL THEN 0 ELSE 1 END,
@@ -177,8 +182,15 @@ export async function validateIncoming(
   payload: Record<string, unknown>,
   msgTs: string | undefined,
   db: Db = getDb(),
+  /**
+   * mode 覆盖：App 上传（/api/snapshot）用 `warn` —— 只标记不丢。
+   * 真实数据本来就会出现「一放学整片从满变空」这种大幅跳变，strict 会误杀。
+   * P2P 同步仍按 `p2p_validate_mode` 配置走。
+   */
+  opts?: { mode?: ValidateMode },
 ): Promise<ValidateResult> {
   const cfg = await readValidateConfig();
+  const mode = opts?.mode ?? cfg.mode;
   const baseDetail = {
     threshold: cfg.threshold,
     window_sec: cfg.windowSec,
@@ -187,7 +199,7 @@ export async function validateIncoming(
     skipped: [] as SkippedArea[],
   };
 
-  if (cfg.mode === 'off') {
+  if (mode === 'off') {
     return {
       decision: 'accept',
       reason: 'mode_off',
@@ -340,7 +352,7 @@ export async function validateIncoming(
     if (totalMismatchRatio > 0.5) {
       // 大部分区域的 total 都对不上：数据可疑，但不直接丢（可能是上游改版）
       return {
-        decision: cfg.mode === 'strict' ? 'suspect' : 'accept',
+        decision: mode === 'strict' ? 'suspect' : 'accept',
         reason: 'deviation_exceeded',
         deviation,
         baseSnapshotId: baseline.id,
@@ -350,7 +362,7 @@ export async function validateIncoming(
     }
 
     if (exceeded) {
-      const decision: Decision = cfg.mode === 'strict' ? 'drop' : 'suspect';
+      const decision: Decision = mode === 'strict' ? 'drop' : 'suspect';
       return {
         decision,
         reason: 'deviation_exceeded',

@@ -304,7 +304,6 @@ export async function registerAdminOpsRoutes(scope: FastifyInstance): Promise<vo
         { key: 'NODE_P2P_ADDR', configured: !!NODE_P2P_ADDR, value: NODE_P2P_ADDR || null },
         { key: 'P2P_ENABLED', configured: true, value: String(P2P_ENABLED) },
         { key: 'P2P_TRUST_NON_WHITELIST', configured: true, value: String(P2P_TRUST_NON_WHITELIST) },
-        { key: 'REGISTER_TOKEN', configured: !!process.env.REGISTER_TOKEN },
         { key: 'ADMIN_SESSION_SECRET', configured: !!process.env.ADMIN_SESSION_SECRET },
         { key: 'ADMIN_INIT_PASSWORD', configured: !!process.env.ADMIN_INIT_PASSWORD },
         { key: 'TRUST_PROXY', configured: !!process.env.TRUST_PROXY, value: process.env.TRUST_PROXY ?? null },

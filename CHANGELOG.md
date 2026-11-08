@@ -6,7 +6,54 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
-## [v2.4.18] - 2026-11-08
+## [v2.4.19] - 2026-11-08
+
+### 删掉 `REGISTER_TOKEN`：它和 UA 一样，没有安全价值
+v2.4.18 刚加的注册令牌门禁，本轮撤掉。理由（用户点破的）：
+
+> 令牌硬编码在 APK 里（`Cloud.java` L36），反编译一次就能拿到 —— **安全强度等同 User-Agent**。
+
+而且它还要求多节点保持一致，维护成本远大于收益。实测现有的**上传路径**防线是这样的：
+
+| 防线 | 实际强度 |
+|---|---|
+| `REGISTER_TOKEN` | ❌ ≈ UA |
+| HMAC 验签 | ❌ 形同虚设（`secret` 是注册时服务器送的） |
+| 上传限流 12/分/IP + IP 拉黑 | ✅ |
+| 形状校验 `cleanPort` / `validatePayload` | ✅ |
+| **数据合理性** | ❌ **完全没有** ← 本轮补上 |
+| `device_auto_approve=off` | 可用但暂不启用（用户决定保持自助注册） |
+
+**改动**：
+- 删 `config.ts` 的 `REGISTER_TOKEN`
+- 删 `upload.ts` 的令牌校验与「假成功不入库」逻辑
+- 删管理后台「系统信息」里的 `REGISTER_TOKEN` 一行
+- 删 `docker-compose.node.yml` 的对应 env
+
+### 修复：互校的基准池只有 42%，导致长期空转
+`findBaseline` 的条件是 `device_id IS NOT NULL`，但**本机 worker 采的快照 `device_id` 恰恰是 NULL**
+（`worker.ts` 的 `insertInto('snapshots')` 固定写 `device_id: null`）。于是 587 条 worker 快照
+全部被排除，基准池只剩 App 上传的 42% —— 线上 `p2p_validation` 表 **0 行**就是这个原因。
+
+修法：条件放宽为 `device_id IS NOT NULL OR client_ip IN ('server','127.0.0.1')`。
+P2P 写入的 `client_ip` 固定是 `'p2p'`，所以这条放宽**不会**让外部节点变成基准。
+
+### 新增：App 上传也做数据合理性校验（warn 语义，只标记不丢）
+以前 `/api/snapshot` 只有形状校验，任何已注册设备都能把「39 个区全空闲」直接写进库。
+
+现在复用跨节点互校的算法：与本节点 `[captured_at ± 10 分钟]` 的历史快照按区域名对齐，
+算空闲率偏差 + 故障差。
+
+- **`warn` 语义**：只给 payload 打 `_suspect: true`，**绝不丢数据**。
+  真实场景「一放学整片从满变空」本来就会大幅跳变，`strict` 会误杀正常数据。
+- 判定记录写入 `p2p_validation`，`peer_id` 用 `dev:<device_id>` 前缀与 P2P 节点区分。
+- 校验自身抛异常时**按通过处理**（保险丝，不能掐断上传）。
+
+**验证**：新增用例「基准全空闲 → 对照（内容不变，不标记）→ 跳变成全满（标记 `_suspect`）」，
+断言三条都入库、标记序列是 `[false, false, true]`、`p2p_validation` 有 `dev:` 记录。
+**96 个测试全过**。
+
+
 
 ### 设备注册加令牌门禁：令牌不对则**不入库**，但对外返回成功
 **动机**：桩不属于任何用户之后，「任意设备刷任意桩」的拦截本来就不该有，

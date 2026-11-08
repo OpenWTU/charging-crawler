@@ -7,7 +7,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import fs from 'node:fs';
-import { DATABASE_PATH, NODE_ENV, P2P_ENABLED, REGISTER_TOKEN, SERVER_VERSION } from '../config.js';
+import { DATABASE_PATH, NODE_ENV, P2P_ENABLED, SERVER_VERSION } from '../config.js';
 import { getDb } from '../db/index.js';
 import { tokenPoolStats } from '../domain/health.js';
 import { getWorkerState } from '../domain/worker.js';
@@ -436,7 +436,6 @@ export async function registerAdminDataRoutes(scope: FastifyInstance): Promise<v
         { key: 'NODE_ENV', configured: true, value: NODE_ENV },
         { key: 'ADMIN_INIT_PASSWORD', configured: !!process.env.ADMIN_INIT_PASSWORD },
         { key: 'ADMIN_SESSION_SECRET', configured: !!process.env.ADMIN_SESSION_SECRET },
-        { key: 'REGISTER_TOKEN', configured: !!REGISTER_TOKEN },
         { key: 'TRUST_PROXY', configured: !!process.env.TRUST_PROXY, value: process.env.TRUST_PROXY ?? null },
         { key: 'P2P_ENABLED', configured: true, value: String(P2P_ENABLED) },
       ],

@@ -329,3 +329,102 @@ describe('回归：多设备众包写同一个桩（port_owner_guard 默认关�
     expect(afterB.rows[0]?.owner_device).toBe(devB);  // owner 变成「最后写入者」
   });
 });
+
+describe('App 上传的数据合理性校验（warn 语义：只标记不丢）', () => {
+  it('与本地历史偏差大的上传会被标记 _suspect，但快照仍然入库', async () => {
+    const sec = '77'.repeat(32);
+    const dev = 'c0c0c0c0c0c0c0c3';
+    expect((await postJson('/api/device/register', {}, { device_id: dev, secret: sec })).statusCode).toBe(200);
+
+    // 3 个区域（>= p2p_validate_min_areas 的默认 3），total 相同才可比
+    const AREAS = ['偏检A区', '偏检B区', '偏检C区'];
+    const db = getDb();
+    for (let i = 0; i < AREAS.length; i += 1) {
+      const name = AREAS[i]!;
+      await sql`
+        INSERT INTO areas (area_id, name, first_seen, last_seen)
+        VALUES (${'r6val' + i}, ${name}, '2026-11-08 09:00:00', '2026-11-08 09:00:00')
+        ON CONFLICT (area_id) DO NOTHING
+      `.execute(db);
+    }
+
+    // 基准：三个区全部空闲（idle == total）
+    const base = {
+      project: 'vtest',
+      app_version: '0.0.1',
+      captured_at: nowLocalStr(0),
+      areas: AREAS.map((name) => ({
+        name, total_port: 10, idle_port: 10, charging_port: 0, fault_port: 0,
+      })),
+    };
+    const r1 = await postJson('/api/snapshot', {
+      'x-charge-timestamp': ts(),
+      'x-charge-nonce': 'e0e0e0e0e0e0e0001',
+      'x-charge-signature': deviceSignature(sec, ts(), 'e0e0e0e0e0e0e0001', Buffer.from(JSON.stringify(base), 'utf8')),
+      'x-device-id': dev,
+    }, base);
+    expect(r1.statusCode).toBe(200);
+
+    // 对照：内容与基准一致（三个区仍全空闲）→ 不该被标记。
+    // 注意 snapshotDigest 刻意排除 captured_at，只改时间会被判重丢弃，
+    // 所以这里改 app_version 让摘要不同，验证的是「内容没变就不标记」。
+    const same = { ...base, app_version: '0.0.2', captured_at: nowLocalStr(5) };
+    const r2 = await postJson('/api/snapshot', {
+      'x-charge-timestamp': ts(),
+      'x-charge-nonce': 'e0e0e0e0e0e0e0002',
+      'x-charge-signature': deviceSignature(sec, ts(), 'e0e0e0e0e0e0e0002', Buffer.from(JSON.stringify(same), 'utf8')),
+      'x-device-id': dev,
+    }, same);
+    expect(r2.statusCode).toBe(200);
+
+    // 跳变：三个区从"全空闲"变"全满"，偏差 100% > 阈值 0.5
+    const jump = {
+      project: 'vtest',
+      app_version: '0.0.1',
+      captured_at: nowLocalStr(10),
+      areas: AREAS.map((name) => ({
+        name, total_port: 10, idle_port: 0, charging_port: 10, fault_port: 0,
+      })),
+    };
+    const r3 = await postJson('/api/snapshot', {
+      'x-charge-timestamp': ts(),
+      'x-charge-nonce': 'e0e0e0e0e0e0e0003',
+      'x-charge-signature': deviceSignature(sec, ts(), 'e0e0e0e0e0e0e0003', Buffer.from(JSON.stringify(jump), 'utf8')),
+      'x-device-id': dev,
+    }, jump);
+    expect(r3.statusCode).toBe(200);   // 关键：warn 语义下不拒绝
+
+    // 三条都入库
+    const cnt = await sql<{ n: number }>`
+      SELECT COUNT(*) AS n FROM snapshots WHERE device_id = ${dev}
+    `.execute(db);
+    expect(Number(cnt.rows[0]?.n)).toBe(3);
+
+    // 跳变那条带 _suspect 标记，前面两条不带
+    const rows = await sql<{ id: number; payload: string }>`
+      SELECT id, payload FROM snapshots WHERE device_id = ${dev} ORDER BY id
+    `.execute(db);
+    const flags = rows.rows.map((r) => {
+      const o = JSON.parse(r.payload) as { _suspect?: boolean };
+      return o._suspect === true;
+    });
+    expect(flags).toEqual([false, false, true]);
+
+    // 互校表里有记录，peer_id 用 dev: 前缀区分设备与 P2P 节点
+    const val = await sql<{ decision: string; peer_id: string }>`
+      SELECT decision, peer_id FROM p2p_validation
+       WHERE peer_id = ${'dev:' + dev}
+       ORDER BY id DESC LIMIT 1
+    `.execute(db);
+    expect(val.rows.length).toBe(1);
+    expect(['suspect', 'drop']).toContain(String(val.rows[0]?.decision));
+  });
+});
+
+/** 生成「现在 + offset 秒」的本地时间串 */
+function nowLocalStr(offsetSec: number): string {
+  const d = new Date(Date.now() + offsetSec * 1000);
+  const p = (x: number): string => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} `
+    + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
