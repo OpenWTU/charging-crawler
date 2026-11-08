@@ -20,8 +20,22 @@ SRC = ROOT / "app" / "src" / "main"
 BUILD = ROOT / "build"
 SDK = Path(os.environ.get("CHARGE_ANDROID_SDK", r"C:\Android\sdk"))
 JDK = Path(os.environ.get("CHARGE_JAVA_HOME", r"C:\Android\jdk17"))
-BT = SDK / "build-tools" / "34.0.0"
-PLATFORM = SDK / "platforms" / "android-34" / "android.jar"
+# 版本探测：优先 34.0.0 / android-34，找不到就用目录里最新的。
+# （CI 的 ubuntu runner 预装版本不一定是 34 —— ci.yml 的 android job 就因此找不到 aapt2）
+def _pick_dir(root: Path, preferred: str) -> Path:
+    if (root / preferred).is_dir():
+        return root / preferred
+    if root.is_dir():
+        cands = sorted((p for p in root.iterdir() if p.is_dir()), key=lambda p: p.name, reverse=True)
+        if cands:
+            print(f"[build] 未找到 {root.name}/{preferred}，改用 {cands[0].name}")
+            return cands[0]
+    return root / preferred
+
+
+BT = _pick_dir(SDK / "build-tools", "34.0.0")
+_PLATFORM_DIR = _pick_dir(SDK / "platforms", "android-34")
+PLATFORM = _PLATFORM_DIR / "android.jar"
 # 工具名跨平台（Windows 带 .exe/.bat，Linux 无后缀）
 IS_WIN = os.name == "nt"
 AAPT2 = BT / ("aapt2.exe" if IS_WIN else "aapt2")

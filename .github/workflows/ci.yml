@@ -98,6 +98,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # 关键：ubuntu runner 的预装 SDK 路径不一定在 ANDROID_HOME，
+      # 而 `${{ env.ANDROID_HOME }}` 引用的是 workflow 顶层 env（不是 shell 变量）。
+      # 不显式设置的话 build.py 会拿到空字符串 → 回落到 Windows 默认路径 → 一定失败。
+      # （v2.4.4 的 ci android job 就挂在这里：日志里 `ANDROID_HOME=` 是空的）
+      - name: 设置 ANDROID_HOME
+        run: |
+          echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+
+      - name: 下载 Android cmdline-tools
+        run: |
+          curl -fsSL -o /tmp/clt.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q -o /tmp/clt.zip -d "$HOME/android-sdk/cmdline-tools"
+          mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
+
+      - name: 安装 Android SDK 组件
+        run: |
+          yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
+
       - name: 构建 web 产物（APK 会把它拷进 assets/www）
         working-directory: webui
         run: |

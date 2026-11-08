@@ -6,6 +6,24 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.5] - 2026-11-08
+
+### 修复（ci.yml 的 android job 最后两个坑，这次有 CI 日志佐证）
+CI 日志显示：
+```
++ echo ANDROID_HOME=
+ANDROID_HOME=                       ← 空的！
+FileNotFoundError: 'build-tools/34.0.0/aapt2'
+```
+1. **`ANDROID_HOME` 从未设置** —— `${{ env.ANDROID_HOME }}` 引用的是 workflow 顶层 env，
+   不是 shell 变量。release-apk.yml 有自己的「设置 ANDROID_HOME」步骤，ci.yml 没有。
+   → 抄 release-apk 的三步：设置 `ANDROID_HOME=$HOME/android-sdk` + 下载 cmdline-tools + 装
+   `platforms;android-34` / `build-tools;34.0.0`
+2. **build.py 硬编码 `build-tools/34.0.0` 与 `platforms/android-34`** —— runner 预装版本未必是 34。
+   → 改成动态探测：优先 34.0.0/android-34，找不到就取目录里最新的并打印一行说明。
+
+v2.4.4 的 release-apk 已经成功（它有完整的 SDK 设置），本轮只影响 ci。
+
 ## [v2.4.4] - 2026-11-08
 
 ### 修复（CI APK 构建失败的真正根因 —— v2.4.0~v2.4.3 连续四版都挂在这）
