@@ -43,7 +43,10 @@ public final class SecureState {
             ApiClient.Jwt jwt = ApiClient.parseJwt(t);
             boolean valid = jwt != null && jwt.expiresAt * 1000 > System.currentTimeMillis();
             o.put("token_present", valid);
-            if (jwt == null && t != null && !t.isEmpty()) {
+            // M5：t == null 表示"有密文但解不开"（Keystore 密钥失效），与"没设置"（""）区分
+        if (t == null) {
+            o.put("corrupt", true);
+        } else if (jwt == null && !t.isEmpty()) {
                 // 有令牌但解析失败（截断/格式不对）：标 corrupt，
                 // 否则前端只看 token_present=false 会显示「尚未设置令牌」，误导用户
                 o.put("corrupt", true);

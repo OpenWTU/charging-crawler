@@ -54,7 +54,11 @@ public class TokenStore {
                 cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, iv));
                 return new String(cipher.doFinal(ct), "UTF-8");
             } catch (Exception e) {
-                return "";
+                // M5：这里原来 return ""，与"从未设置"无法区分 ——
+                // 恢复备份/换机/锁屏策略变更导致 Keystore 密钥失效时，前端会显示
+                // 「本地尚未设置令牌…去获取才能刷新」，而真实原因是密文解不开。
+                // 返回 null 让调用方标记 corrupt。
+                return null;
             }
         }
     }

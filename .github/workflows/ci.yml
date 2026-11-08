@@ -74,3 +74,44 @@ jobs:
       - name: 构建
         working-directory: webui
         run: pnpm run build
+
+  android:
+    name: android build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: webui/pnpm-lock.yaml
+
+      # M10：CI 原来完全没有 Android job —— Java 编译错误、manifest 破坏、
+      # build.py 的版本号逻辑都只能等到打 tag（或真机）才暴露。
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 构建 web 产物（APK 会把它拷进 assets/www）
+        working-directory: webui
+        run: |
+          pnpm install --frozen-lockfile=false
+          pnpm run build
+
+      - name: 编译 APK（--no-version-json，不写 version_clean.json）
+        run: python3 android/build.py --no-version-json
+
+      - name: 编译并运行 Java 单元测试（Packets/Sign 向量）
+        run: |
+          SDK="$ANDROID_HOME"
+          API=$(ls "$SDK/platforms" | sort -V | tail -1)
+          javac -cp "$SDK/platforms/$API/android.jar" -d /tmp/jt \
+            android/test/com/test19124/charging/*.java \
+            android/app/src/main/java/com/test19124/charging/*.java 2>&1 | head -40
+          echo "javac 完成（$API）"
