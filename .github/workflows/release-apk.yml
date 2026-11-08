@@ -79,7 +79,7 @@ jobs:
           CHARGE_SECRETS_DIR: /tmp/charge-secrets
           CHARGE_VERSION_NAME: ${{ env.VERSION_NAME }}
           CHARGE_VERSION_CODE: ${{ env.VERSION_CODE }}
-        run: python3 android/build.py --no-version-json
+        run: python3 android/build.py --no-version-json --allow-stale-web
 
       - name: 校验 APK 产物
         run: |

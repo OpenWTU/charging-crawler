@@ -105,7 +105,7 @@ jobs:
           pnpm run build
 
       - name: 编译 APK（--no-version-json，不写 version_clean.json）
-        run: python3 android/build.py --no-version-json
+        run: python3 android/build.py --no-version-json --allow-stale-web
 
       - name: 编译并运行 Java 单元测试（Packets/Sign 向量）
         run: |

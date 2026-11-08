@@ -84,7 +84,11 @@ def main():
         raise SystemExit(f"缺少 Web 产物（{web_dist}）：请先在 webui 执行 vite build")
     # 新鲜度校验：webui/src 明显新于 dist 时拒绝打包旧 UI（--allow-stale-web 可跳过）
     webui_src = ROOT.parent / "webui" / "src"
-    if not allow_stale_web and webui_src.is_dir():
+    # CI 里 checkout 的 mtime 与构建产物非常接近，这个启发式会误判（v2.4.0 的 release-apk
+    # 和 ci 的 android job 都因此失败）。CI 的步骤顺序是明确的（先 vite build 再 build.py），
+    # 所以只在本地启用该检查。
+    in_ci = bool(os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"))
+    if not allow_stale_web and not in_ci and webui_src.is_dir():
         src_newest = max((p.stat().st_mtime for p in webui_src.rglob("*") if p.is_file()),
                          default=0.0)
         dist_mtime = (web_dist / "app.html").stat().st_mtime

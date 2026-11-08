@@ -6,6 +6,15 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.1] - 2026-11-08
+
+### 修复
+- **CI 构建 APK 失败**（v2.4.0 的 release-apk 与 ci 的 android job 都挂在「构建 APK」）：
+  上一轮给 `build.py` 加的「webui/src 比 dist 新就拒绝打包」启发式在 CI 里误判
+  （checkout 的 mtime 与构建产物过于接近）。改为**只在本地生效**（检测 `CI`/`GITHUB_ACTIONS`
+  环境变量），两个 workflow 同时显式加 `--allow-stale-web` 双保险。
+  本地已模拟 CI 环境（含 `CHARGE_VERSION_NAME=2.4.0` / `CHARGE_VERSION_CODE=2004000`）验证通过。
+
 ## [v2.4.0] - 2026-11-08
 
 ### 新增：管理后台（17 个页面 + 多账号鉴权）
