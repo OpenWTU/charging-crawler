@@ -429,8 +429,11 @@ export function useAreaSelection(src) {
 
   // 统计条：空闲 / 充电中 / 故障 三数汇总（无数据时由 statText 显示占位）
   const sum = computed(() => areas.value.reduce((s, a) => {
-    // Number 兜底：概览缺字段时避免 NaN 把统计条整行吃掉
-    s.idle += Number(a.idle_port) || 0;
+    // M3：idle 必须走 areaPortsStat（与列表数字/筛选/排序同一口径）。
+    // 原来用概览的 idle_port，端口明细不同步时会与列表合计不一致
+    // （顶部显示「空闲 12」而列表加起来只有 7），违背本文件第 5 行写的不变量。
+    s.idle += areaPortsStat(a).free;
+    // charging / fault 只有概览快照有（端口明细里没有这两类细分），保留原来源并注明
     s.charging += Number(a.charging_port) || 0;
     s.fault += Number(a.fault_port) || 0;
     return s;

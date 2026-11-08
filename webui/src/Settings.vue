@@ -152,7 +152,7 @@ const themeOptions = [
 
 const uploadToken = ref(true);
 const uploadBusy = ref(false);
-const diagnose = ref(readDiagnoseStored());
+const diagnose = ref(readDiagnoseCached());
 const reacquiring = ref(false);
 let loadErrorNotified = false;
 let captureGuard = 0;
@@ -221,6 +221,18 @@ function readDiagnoseStored() {
   }
 }
 
+// 轻微2：原生从不返回 diagnose 字段，但共享轮询每 2s 都会 getItem + JSON.parse 同一份。
+// 加 30 秒缓存，避免无意义的解析开销。
+let diagnoseCache = null;
+let diagnoseCacheAt = 0;
+function readDiagnoseCached() {
+  const now = Date.now();
+  if (diagnoseCache !== null && now - diagnoseCacheAt < 30000) return diagnoseCache;
+  diagnoseCache = readDiagnoseStored(); // 注意：这里必须是 readDiagnoseStored（缓存自己会递归爆栈）
+  diagnoseCacheAt = now;
+  return diagnoseCache;
+}
+
 function persistDiagnose(on) {
   try {
     if (on) localStorage.setItem(DIAGNOSE_KEY, JSON.stringify({ on: true, ts: Date.now() }));
@@ -236,7 +248,7 @@ function syncDiagnoseState(s) {
     persistDiagnose(s.diagnose);
     return;
   }
-  const stored = readDiagnoseStored();
+  const stored = readDiagnoseCached();
   if (diagnose.value !== stored) diagnose.value = stored;
 }
 

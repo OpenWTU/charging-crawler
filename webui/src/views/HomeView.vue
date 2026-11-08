@@ -152,7 +152,7 @@ v-model:show="showCard" :name="cardName" :area="cardArea"
  * 本组件只持有「页面级 UI 状态」（搜索词、筛选、弹层开关、搜索命中的设备）。
  * 端口色板一律走 group（见 portStatus.js），单行数字/筛选/排序共用 useAreaSelection 的口径。
  */
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 import PortSheet from '../components/PortSheet.vue';
 import AreaCard from '../components/AreaCard.vue';
 import HistorySheet from '../components/HistorySheet.vue';
@@ -367,4 +367,11 @@ function refreshPortsIfOpen() {
 }
 
 defineExpose({ closeTopLayer, refreshPortsIfOpen });
+
+// 轻微5：highlightTimer / searchOpenTimer 原来没有在卸载时清
+// （HomeView 由 v-show 常驻，影响有限，但计时器应配平）
+onUnmounted(() => {
+  if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = 0; }
+  if (searchOpenTimer) { clearTimeout(searchOpenTimer); searchOpenTimer = 0; }
+});
 </script>

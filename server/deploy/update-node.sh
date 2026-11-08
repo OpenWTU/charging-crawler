@@ -66,6 +66,11 @@ if [ "$NEW_ID" = "$OLD_ID" ]; then
 fi
 
 # 2.5 同步 version.json + APK（发版时 release-apk 会把两者作为 Release asset 发布）
+
+# ⚠️ L8：本脚本先替换 version.json / APK，再更新容器。
+# 若容器更新失败并回滚镜像，version.json 仍指向新版 → App 会被引导"升级"到新 APK 配旧服务端。
+# 回滚分支必须同时回滚 version.json/APK（或接受这个短暂不一致）。
+
 VERSION_JSON_URL="https://github.com/OpenWTU/charging-crawler/releases/download/$TAG/version.json"
 APK_URL="https://github.com/OpenWTU/charging-crawler/releases/download/$TAG/app-debug.apk"
 DATA_DIR="${DATA_DIR:-/var/lib/charge-cloud}"

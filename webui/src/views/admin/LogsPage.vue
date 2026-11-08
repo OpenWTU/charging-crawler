@@ -13,13 +13,16 @@
       <label class="a-small a-muted">
         <input v-model="auto" type="checkbox" /> 自动刷新 5s
       </label>
+      <label class="a-small a-muted" title="跟随最新：自动滚到底部">
+        <input v-model="follow" type="checkbox" @change="onFollow" /> 跟随最新
+      </label>
       <span class="a-spacer" />
       <span class="a-small a-muted">缓冲 {{ stats.size }}/{{ stats.max }} 条</span>
     </div>
 
     <p v-if="error" class="a-err">{{ error }}</p>
 
-    <section class="a-panel logbox">
+    <section ref="boxRef" class="a-panel logbox">
       <div v-for="l in items" :key="l.seq" class="line" :class="lvClass(l.level)">
         <span class="t">{{ fmtTime(l.ts) }}</span>
         <span class="lv">{{ lvText(l.level) }}</span>
@@ -40,6 +43,18 @@ const items = ref([]);
 const stats = ref({ size: 0, max: 2000 });
 const error = ref('');
 const auto = ref(true);
+// L23：日志是旧→新，最新在底部；加「跟随最新」避免每次手动滚
+const follow = ref(true);
+const boxRef = ref(null);
+
+function onFollow() {
+  if (follow.value) scrollBottom();
+}
+
+function scrollBottom() {
+  const el = boxRef.value;
+  if (el) el.scrollTop = el.scrollHeight;
+}
 let timer = null;
 
 const LV = { 10: 'trace', 20: 'debug', 30: 'info', 40: 'warn', 50: 'error', 60: 'fatal' };
@@ -62,6 +77,7 @@ async function load() {
     const d = await apiGet(`/admin/api/logs?${p.toString()}`);
     items.value = d.items || [];
     stats.value = d.stats || stats.value;
+    if (follow.value) scrollBottom();
   } catch (e) {
     error.value = e.message || '加载失败';
   }

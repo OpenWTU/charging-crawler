@@ -379,6 +379,8 @@ public class MainActivity extends Activity
 
     @Override
     protected void onDestroy() {
+        // M6：停掉 mDNS 发现（原来没有停止入口，discovery 常驻整个进程）
+        try { NodeDiscovery.stopMdns(); } catch (Throwable ignored) { }
         gone = true;
         // 只有用户主动退出时才停抓包；后台被系统回收交给 service 自身超时
         if (isFinishing()) {

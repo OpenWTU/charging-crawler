@@ -88,24 +88,29 @@ public final class NodeDiscovery {
     /* ---------------- 发现主流程 ---------------- */
 
     private static void discover() {
-        // 1) 优先探测缓存（可能还活着，最快）
+        // M6：以前命中缓存/目录就 return，导致 mDNS 在最常见的联网场景下**永远不启动**（与“校园网零配置”能力不符）。
+        // 现在：先用缓存/目录选出一个可用节点，但不提前返回，统一在末尾启动 mDNS（已去重）。
         String cached = currentBase;
+        boolean picked = false;
         if (!cached.equals(DEFAULT_BASE) && healthy(cached)) {
             switchTo(cached);
-            return;
+            picked = true;
         }
 
         // 2) GitHub 目录
-        List<String> candidates = fetchDirectory();
-        for (String url : candidates) {
-            if (healthy(url)) {
-                switchTo(url);
-                return;
+        if (!picked) {
+            List<String> candidates = fetchDirectory();
+            for (String url : candidates) {
+                if (healthy(url)) {
+                    switchTo(url);
+                    picked = true;
+                    break;
+                }
             }
         }
 
         // 3) 兜底内置
-        if (healthy(DEFAULT_BASE)) {
+        if (!picked && healthy(DEFAULT_BASE)) {
             switchTo(DEFAULT_BASE);
         } else {
             DebugLog.add("节点发现：全部候选不可达，保持 " + currentBase);
@@ -219,7 +224,11 @@ public final class NodeDiscovery {
 
     /* ---------------- mDNS ---------------- */
 
+    /** M6：已启动就不重复启动（原来每次 discover 都会重新 discoveryListener） */
     private static void startMdns() {
+        if (discoveryListener != null) {
+            return;
+        }
         try {
             nsdManager = (NsdManager) appContext.getSystemService(Context.NSD_SERVICE);
             if (nsdManager == null) {
@@ -290,6 +299,22 @@ public final class NodeDiscovery {
             });
         } catch (Exception e) {
             DebugLog.add("mDNS 初始化失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * M6：停止 mDNS 发现（原来没有任何停止入口，
+     * discovery 会常驻整个进程生命周期，白耗电 + 日志刷屏）。
+     */
+    public static void stopMdns() {
+        try {
+            if (nsdManager != null && discoveryListener != null) {
+                nsdManager.stopServiceDiscovery(discoveryListener);
+            }
+        } catch (Exception e) {
+            DebugLog.add("mDNS 停止失败: " + e.getMessage());
+        } finally {
+            discoveryListener = null;
         }
     }
 }

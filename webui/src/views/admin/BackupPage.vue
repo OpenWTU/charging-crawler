@@ -17,7 +17,7 @@
             <td class="a-mono a-small">{{ b.name }}</td>
             <td class="num">{{ (Number(b.size) || 0) > 0 ? ((b.size / 1024 / 1024).toFixed(2) + ' MB') : '—' }}</td>
             <td>
-              <a class="a-btn sm" :href="`/admin/api/backup/download?name=${encodeURIComponent(b.name)}`">下载</a>
+              <button class="a-btn sm" @click="download(b.name)">下载</button>
               <button class="a-btn sm danger" @click="restore(b.name)">恢复</button>
             </td>
           </tr>
@@ -56,6 +56,29 @@ async function load() {
     items.value = d.items || [];
   } catch (e) {
     error.value = e.message || '加载失败';
+  }
+}
+
+async function download(name) {
+  // L21：原来用 <a> 伪装按钮，失败时会离开 SPA
+  try {
+    const resp = await fetch(`/admin/api/backup/download?name=${encodeURIComponent(name)}`, {
+      credentials: 'same-origin',
+    });
+    if (!resp.ok) {
+      let msg = `下载失败 HTTP ${resp.status}`;
+      try { const d = await resp.json(); if (d && d.error) msg = d.error; } catch { /* 非 JSON */ }
+      throw new Error(msg);
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    error.value = e.message || '下载失败';
   }
 }
 

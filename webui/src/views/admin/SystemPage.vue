@@ -38,7 +38,7 @@
         <tbody>
           <tr v-for="t in tables" :key="t.name">
             <td class="mono">{{ t.name }}</td>
-            <td class="num">{{ t.rows.toLocaleString('zh-CN') }}</td>
+            <td class="num">{{ (Number(t.rows) || 0).toLocaleString('zh-CN') }}</td>
           </tr>
         </tbody>
       </table>

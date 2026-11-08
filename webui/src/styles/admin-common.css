@@ -117,3 +117,20 @@
 
 .a-bar { background: var(--neutral-bg, #f3f4f6); height: 6px; border-radius: 3px; overflow: hidden; min-width: 50px; }
 .a-bar > i { display: block; height: 6px; }
+
+
+/* ===== M31：≤600px 响应式（实测三处破相）=====
+   1. 空位排行两列挤成「体…/宿…/图…」
+   2. 表格「总数/故障」列折成两行
+   3. 侧边导航最后几项被裁在视口外且无提示 */
+@media (max-width: 600px) {
+  .a-tbl th,
+  .a-tbl td { white-space: nowrap; }
+  .a-tbl { min-width: 520px; } /* 让容器横向滚动而不是把单元格挤成两行 */
+  .a-tbl .wrap { min-width: 220px; }
+}
+
+/* 概览的空位排行（OverviewPage 里的 .rank）在小屏改单列 */
+@media (max-width: 600px) {
+  .rank { grid-template-columns: 1fr !important; }
+}

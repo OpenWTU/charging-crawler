@@ -87,6 +87,7 @@
 </template>
 
 <script setup>
+let doneTimer = null;
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { showConfirmDialog, showToast } from 'vant';
 import { captureToken, clearToken, saveToken } from './api.js';
@@ -222,7 +223,7 @@ function save() {
     captureError.value = '';
     refresh();
     // 原生已弹「Token 已保存」，这里不再二次 Toast
-    setTimeout(() => emit('done'), 900);
+    doneTimer = setTimeout(() => emit('done'), 900);
   } else if (r === 'invalid') {
     showToast('令牌无效或已过期');
   } else {
@@ -286,6 +287,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  // 轻微6：保存成功的 900ms 定时器也要清（否则卸载后仍会 emit）
+  if (doneTimer) { clearTimeout(doneTimer); doneTimer = null; }
   if (returnTimer) { clearTimeout(returnTimer); returnTimer = 0; }
   clearGuard();
   if (window.__onTokenCaptured === handleCaptured) window.__onTokenCaptured = null;

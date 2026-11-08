@@ -55,7 +55,7 @@
           <span
 v-for="p in drawerPorts" :key="p.device_hex + ':' + p.port" class="port"
                 :class="'g-' + (p.status_group || 'unknown')"
-                :title="`${p.device_hex} · ${p.port} · ${p.status || '未知'} · ${p.updated_at || ''}`" />
+                :title="`${p.device_hex} · ${p.port} · ${p.status || '未知'} · ${p.updated_at || ''}`">{{ groupGlyph(p.status_group) }}</span>
         </div>
         <p class="legend">
           <span class="port g-free" /> 空闲
@@ -79,6 +79,11 @@ const areas = ref([]);
 const snapshot = ref(null);
 const drawer = ref('');
 const error = ref('');
+
+/** L19：端口状态不只靠颜色区分（色弱用户 + .g-unknown 与 .g-unavailable 相近） */
+function groupGlyph(g) {
+  return g === 'free' ? '○' : g === 'busy' ? '●' : g === 'unavailable' ? '✕' : '?';
+}
 const drawerPorts = ref([]);
 
 const snapText = computed(() => (snapshot.value

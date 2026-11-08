@@ -7,7 +7,8 @@
           <div class="grp">{{ group.title }}</div>
           <button
 v-for="m in group.items" :key="m.key" class="nav-item"
-                  :class="{ active: tab === m.key }" @click="tab = m.key">
+                  :class="{ active: tab === m.key }" :aria-current="tab === m.key ? 'page' : undefined"
+                @click="tab = m.key">
             <span>{{ m.label }}</span>
             <span v-if="m.badge" class="badge">{{ m.badge }}</span>
           </button>
@@ -29,24 +30,11 @@ v-for="m in group.items" :key="m.key" class="nav-item"
         <p v-if="error && tab === 'overview'" class="err">
           {{ error }} <button class="btn ghost sm" @click="load">重试</button>
         </p>
-        <OverviewPage v-if="tab === 'overview'" :data="overview" :loading="loading" @go="tab = $event" @refresh="load" />
-        <LivePage v-else-if="tab === 'live'" />
-        <HistoryPage v-else-if="tab === 'history'" />
-        <QualityPage v-else-if="tab === 'quality'" />
-        <DbPage v-else-if="tab === 'db'" />
-        <TokensPage v-else-if="tab === 'tokens'" @changed="load" />
-        <DevicesPage v-else-if="tab === 'devices'" />
-        <UnitsPage v-else-if="tab === 'units'" />
-        <NodesPage v-else-if="tab === 'nodes'" />
-        <JobsPage v-else-if="tab === 'jobs'" />
-        <LogsPage v-else-if="tab === 'logs'" />
-        <TrafficPage v-else-if="tab === 'traffic'" />
-        <ConfigPage v-else-if="tab === 'config'" />
-        <ReleasePage v-else-if="tab === 'release'" />
-        <BackupPage v-else-if="tab === 'backup'" />
-        <AccountsPage v-else-if="tab === 'accounts'" />
-        <AuditPage v-else-if="tab === 'audit'" />
-        <SystemPage v-else-if="tab === 'system'" />
+        <!-- M29：原来是一长串 v-if —— 每次切 tab 都销毁重建，查询条件/滚动位置/筛选全丢。
+             改成动态组件 + KeepAlive：切回来状态还在。 -->
+        <KeepAlive>
+          <component :is="currentPage" v-bind="currentProps" @changed="load" @go="tab = $event" @refresh="load" />
+        </KeepAlive>
       </main>
     </div>
   </div>
@@ -77,7 +65,20 @@ import SystemPage from './SystemPage.vue';
 const props = defineProps({ me: { type: Object, default: null } });
 defineEmits(['logout']);
 
+const PAGES = {
+  overview: OverviewPage, live: LivePage, history: HistoryPage, quality: QualityPage,
+  db: DbPage, tokens: TokensPage, devices: DevicesPage, units: UnitsPage,
+  nodes: NodesPage, jobs: JobsPage, logs: LogsPage, traffic: TrafficPage,
+  config: ConfigPage, release: ReleasePage, backup: BackupPage,
+  accounts: AccountsPage, audit: AuditPage, system: SystemPage,
+};
+
 const tab = ref('overview');
+const currentPage = computed(() => PAGES[tab.value] ?? OverviewPage);
+// 只有概览需要 Shell 下发的数据，其余页面自己拉
+const currentProps = computed(() => (tab.value === 'overview'
+  ? { data: overview.value, loading: loading.value }
+  : {}));
 const overview = ref(null);
 const loading = ref(false);
 const error = ref('');

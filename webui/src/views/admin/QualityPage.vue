@@ -39,7 +39,10 @@ v-if="canWrite && c.code === 'ghost_ports'" class="a-btn sm danger"
                 @click="fixGhost">
 清理全部幽灵端口
 </button>
-        <span v-else class="a-small a-muted">该项需人工处理（在对应页面操作）</span>
+        <span v-else class="a-small a-muted">
+          该项需人工处理：<a
+            :href="jumpFor(c).href" class="a-btn sm">{{ jumpFor(c).label }}</a>
+        </span>
       </div>
     </section>
   </div>
@@ -64,6 +67,18 @@ function fmt(v) {
   if (v === null || v === undefined) return '—';
   if (typeof v === 'number') return Number.isInteger(v) ? v : v.toFixed(2);
   return String(v);
+}
+
+/** L15：非一键修复项给出可点的跳转目标 */
+function jumpFor(c) {
+  const map = {
+    conservation_fail: { href: '#history', label: '去历史分析' },
+    area_shift: { href: '#units', label: '去桩与区域' },
+    no_coords: { href: '#units', label: '去补坐标' },
+    too_dense: { href: '#devices', label: '去看设备' },
+    stale_devices: { href: '#devices', label: '去设备页' },
+  };
+  return map[c.code] || { href: '#overview', label: '去概览' };
 }
 
 async function scan() {

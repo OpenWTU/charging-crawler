@@ -211,8 +211,17 @@ public final class AppWebShell {
             java.io.InputStream in = host.activity().getAssets().open(path.substring(1));
             String mime = path.endsWith(".js") ? "application/javascript"
                     : path.endsWith(".css") ? "text/css"
-                    : path.endsWith(".html") ? "text/html"
-                    : "application/octet-stream";
+                : path.endsWith(".svg") ? "image/svg+xml"
+                : path.endsWith(".png") ? "image/png"
+                : path.endsWith(".webp") ? "image/webp"
+                : path.endsWith(".jpg") || path.endsWith(".jpeg") ? "image/jpeg"
+                : path.endsWith(".gif") ? "image/gif"
+                : path.endsWith(".woff2") ? "font/woff2"
+                : path.endsWith(".woff") ? "font/woff"
+                : path.endsWith(".ttf") ? "font/ttf"
+                : path.endsWith(".json") || path.endsWith(".webmanifest") ? "application/json"
+                : path.endsWith(".map") ? "application/json"
+                : "application/octet-stream";
             WebResourceResponse resp = new WebResourceResponse(mime, "UTF-8", in);
             java.util.Map<String, String> headers = new java.util.HashMap<>();
             if (path.endsWith(".html")) {

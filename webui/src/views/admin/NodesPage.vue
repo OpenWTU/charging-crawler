@@ -38,7 +38,7 @@
         </thead>
         <tbody>
           <tr v-for="p in peers" :key="p.peer_id">
-            <td>{{ p.name || p.peer_id.slice(0, 12) }}</td>
+            <td>{{ p.name || (p.peer_id || '').slice(0, 12) }}</td>
             <td class="a-mono a-small">{{ p.version || '—' }}</td>
             <td>
               <span class="a-tag" :class="p.whitelisted ? 'ok' : 'warn'">{{ p.whitelisted ? '已登记' : '未受信' }}</span>
@@ -82,14 +82,14 @@
         <tbody>
           <tr v-for="id in whitelist.github" :key="'g' + id">
             <td><span class="a-tag info">nodes.json</span></td>
-            <td class="a-mono a-small">{{ id.slice(0, 20) }}…</td>
+            <td class="a-mono a-small">{{ (id || '').slice(0, 20) }}…</td>
             <td class="a-muted a-small">需改仓库</td>
             <td><span class="a-small a-muted">不可在此删除</span></td>
           </tr>
           <tr v-for="p in whitelist.local" :key="'l' + p.peerId">
             <td><span class="a-tag ok">本地</span></td>
             <td>
-              <span class="a-mono a-small">{{ p.peerId.slice(0, 20) }}…</span>
+              <span class="a-mono a-small">{{ (p.peerId || '').slice(0, 20) }}…</span>
               <span v-if="p.name" class="a-muted"> · {{ p.name }}</span>
             </td>
             <td class="a-mono a-small">{{ p.addr || p.url || '—' }}</td>
@@ -103,7 +103,7 @@
     </section>
 
     <!-- 互校明细 -->
-    <div v-if="validation" class="a-drawer-mask" @click.self="validation = null">
+    <div v-if="validation" class="a-drawer-mask" role="dialog" aria-modal="true" @click.self="validation = null">
       <aside class="a-drawer">
         <header>
           <h2>互校判定</h2>

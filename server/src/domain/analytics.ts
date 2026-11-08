@@ -82,7 +82,6 @@ export interface AnalyticsPayload {
     name: string;
     predicted_idle: number;
     total: number;
-    samples: number;
     basis: string;
   }>;
   best_slots: Array<{ dow: number; hour: number; ratio: number }>;
@@ -292,7 +291,10 @@ export async function buildAnalytics(area: string | null = null, weeks = 8): Pro
       name,
       predicted_idle: pyRound(r * cur[1]),
       total: cur[1],
-      samples: cur[1],
+      // L3：这里原来写 `samples: cur[1]` —— cur 是 [idle, total] 元组，
+      // 填进去的是**端口数**而不是采样条数（webui 只读 predicted_idle/total，故一直没爆）。
+      // 语义错位比缺字段更糟，先删掉；要真给采样条数需扩 IdleTotal 带上 COUNT(*)。
+
       basis: '同星期同时段均值（按端口加权）',
     };
   });

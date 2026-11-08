@@ -11,7 +11,7 @@ v-for="t in tabs" :key="t.key" class="a-btn sm" :class="{ primary: tab === t.key
         <option value="">导出 CSV…</option>
         <option v-for="t in exportables" :key="t" :value="t">{{ t }}</option>
       </select>
-      <button class="a-btn sm" :disabled="!exportTable" @click="doExport">导出</button>
+      <button class="a-btn sm" :disabled="!exportTable || exporting" @click="doExport">{{ exporting ? '导出中…' : '导出' }}</button>
     </div>
 
     <p v-if="error" class="a-err">{{ error }}</p>
@@ -35,7 +35,7 @@ v-for="t in tabs" :key="t.key" class="a-btn sm" :class="{ primary: tab === t.key
           <tr v-for="s in snaps" :key="s.id">
             <td class="a-small">{{ s.received_at }}</td>
             <td><span class="a-tag" :class="s.source === 'app' ? 'ok' : 'info'">{{ s.source === 'app' ? 'App' : 'Worker' }}</span></td>
-            <td class="a-mono a-small">{{ s.device_id ? s.device_id.slice(0, 10) : '—' }}</td>
+            <td class="a-mono a-small">{{ s.device_id ? String(s.device_id).slice(0, 10) : '—' }}</td>
             <td class="a-mono a-small">{{ s.app_version || '—' }}</td>
             <td class="num">{{ s.areas }}</td>
             <td class="a-mono a-small">{{ s.sha8 }}</td>
@@ -97,7 +97,7 @@ v-for="t in tabs" :key="t.key" class="a-btn sm" :class="{ primary: tab === t.key
       <p v-else class="a-empty">输入桩号后查询</p>
     </section>
 
-    <div v-if="snapDetail" class="a-drawer-mask" @click.self="snapDetail = null">
+    <div v-if="snapDetail" class="a-drawer-mask" role="dialog" aria-modal="true" @click.self="snapDetail = null">
       <aside class="a-drawer">
         <header><h2>快照 #{{ snapDetail.snapshot?.id }}</h2><button class="a-btn sm" @click="snapDetail = null">关闭</button></header>
         <dl class="a-kv">
@@ -244,10 +244,34 @@ async function loadPile() {
   }
 }
 
-function doExport() {
+const exporting = ref(false);
+
+async function doExport() {
   if (!exportTable.value) return;
-  window.location.href = `/admin/api/export.csv?table=${encodeURIComponent(exportTable.value)}`;
-  exportTable.value = '';
+  // L13：加 loading 与失败提示（原来直接跳转，参数错时浏览器会显示 JSON）
+  exporting.value = true;
+  try {
+    const resp = await fetch(`/admin/api/export.csv?table=${encodeURIComponent(exportTable.value)}`, {
+      credentials: 'same-origin',
+    });
+    if (!resp.ok) {
+      let msg = `导出失败 HTTP ${resp.status}`;
+      try { const d = await resp.json(); if (d && d.error) msg = d.error; } catch { /* 非 JSON */ }
+      throw new Error(msg);
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${exportTable.value}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    exportTable.value = '';
+  } catch (e) {
+    error.value = e.message || '导出失败';
+  } finally {
+    exporting.value = false;
+  }
 }
 
 onMounted(loadSnaps);

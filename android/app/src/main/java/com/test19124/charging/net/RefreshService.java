@@ -99,7 +99,7 @@ public final class RefreshService {
             if (pending != null) {
                 if (System.currentTimeMillis() < store.pendingRetryAt()) {
                     // 退避期内不重试，避免失败后每次点刷新都打上游
-                    postRefreshDone(true, "");
+                    postRefreshDone(false, "上次上传仍在重试冷却，将自动补传");
                 } else {
                     retryPendingUpload(pending);
                 }

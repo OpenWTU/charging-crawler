@@ -258,6 +258,13 @@ public class CaptureVpnService extends VpnService {
     }
 
     private void handle(byte[] p, int n) {
+        // 轻微3：先校验长度与头长 —— 原来直接用 u16(p, ihl+2)，ihl 异常或短包会越界，
+        // 异常被 loop() 的 catch 捕获后**直接退出循环**，整个抓包会话结束（用户看到"未抓到 token"）
+        if (p == null || n < 20) return;
+        int ihlCheck = (p[0] & 0xF) * 4;
+        if (ihlCheck < 20 || ihlCheck > n) return;
+        int totalCheck = Packets.u16(p, 2);
+        if (totalCheck < ihlCheck || totalCheck > n) return;
         if (((p[0] >> 4) & 0xF) != 4) {
             return;
         }

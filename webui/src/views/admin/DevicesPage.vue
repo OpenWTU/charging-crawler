@@ -27,7 +27,7 @@ v-for="f in filters" :key="f.key" class="a-btn sm"
         <tbody>
           <tr v-for="d in items" :key="d.device_id">
             <td><input v-model="checked" type="checkbox" :value="d.device_id" /></td>
-            <td class="a-mono">{{ d.device_id.slice(0, 16) }}</td>
+            <td class="a-mono">{{ (d.device_id || '').slice(0, 16) }}</td>
             <td>{{ d.model || '—' }}</td>
             <td class="a-mono a-small">{{ d.app_version || '—' }}</td>
             <td>
@@ -59,7 +59,7 @@ v-if="d.status !== 'revoked'" class="a-btn sm danger"
       </div>
     </section>
 
-    <div v-if="drawer" class="a-drawer-mask" @click.self="drawer = null">
+    <div v-if="drawer" class="a-drawer-mask" role="dialog" aria-modal="true" @click.self="drawer = null">
       <aside class="a-drawer">
         <header>
           <h2>设备详情</h2>

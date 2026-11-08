@@ -14,7 +14,7 @@ v-for="t in tabs" :key="t.key" class="a-btn sm" :class="{ primary: tab === t.key
 
     <section v-if="tab === 'admin'" class="a-panel">
       <div class="a-toolbar a-pad">
-        <input v-model.trim="fUsername" class="a-input" placeholder="账号" @keyup.enter="load" />
+        <input v-model.trim="fUsername" class="a-input" placeholder="账号" @input="load" />
         <input v-model.trim="fAction" class="a-input" placeholder="动作（login/purge/…）" @keyup.enter="load" />
       </div>
       <table class="a-tbl">
