@@ -246,7 +246,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     // M12：用户不存在也跑一次 scrypt，消除 40 倍耗时差（防用户名枚举）
     const passOk = verifyPasswordConstantTime(password, u?.pass_hash);
     if (!u || Number(u.disabled) === 1 || !passOk) {
-      const locked = noteLoginFailure(ip, username);
+      const locked = noteLoginFailure(ip, username, Boolean(u));
       await audit({
         username: username || null,
         action: 'login',

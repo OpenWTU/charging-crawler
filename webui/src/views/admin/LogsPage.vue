@@ -34,7 +34,8 @@
 </template>
 
 <script setup>
-import { onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
+import { onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
+import { usePageLoad } from './usePageLoad.js';
 import { apiGet } from '../../api/adminApi.js';
 
 const level = ref('');
@@ -91,7 +92,9 @@ function reschedule() {
 watch(auto, reschedule);
 // S2（复审实测）：KeepAlive 不会 unmount，原来只在 onBeforeUnmount 清定时器 →
 // 切走后仍每 5 秒打一次 /admin/api/logs（实测停 11.5s 发了 2 次），一直刷到退出登录。
-onActivated(() => { load(); reschedule(); });
+// 2（终审）：页面的取数统一走 usePageLoad（不再隐式依赖 KeepAlive），
+// 定时器仍单独由 activated/deactivated 管
+usePageLoad(() => { load(); reschedule(); });
 onDeactivated(() => { if (timer) { clearInterval(timer); timer = 0; } });
 onBeforeUnmount(() => { if (timer) clearInterval(timer); });
 </script>

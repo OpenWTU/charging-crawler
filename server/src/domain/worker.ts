@@ -53,9 +53,19 @@ export function stableStringify(obj: unknown): string {
 }
 
 /**
- * 快照去重摘要（上传落库与 P2P 广播必须用同一个函数，否则同一份数据两个摘要 → 重复落库）。
+ * 快照内容摘要。
  *
- * 排除 captured_at（采集时刻由客户端给，重传时可能微调）与接收端字段。
+ * ⚠️ 现状（终审确认）：**upload 侧与 P2P/storeSnapshot 侧的摘要口径不同** ——
+ * upload 为了「端口变化也必须能写进去」把规范化后的 ports 一并纳入摘要，
+ * 而 P2P 载荷里没有 ports（端口是设备本地数据，设计如此），`storeSnapshot` 只用 payload。
+ * 后果：同一份内容若同时经「App 直传」和「P2P」两条渠道进来，会落两条快照。
+ *   - 影响：`snapshots_today` / analytics 样本数偏高
+ *   - 不影响：`/api/now` 的 delta（同内容算 0）、`port_states`、`pile_samples`
+ *   - 两个渠道各自内部去重仍然正常
+ * 若以后要彻底统一：给 snapshots 加一列 `payload_sha256`（只含 payload），
+ * upload 去重改成「内容摘要相同 **且** 端口集合相同」。
+ *
+ * 排除 captured_at（采集时刻由客户端给，重传时可能微调）、接收端字段与本地判定标记。
  */
 export function snapshotDigest(payload: Record<string, unknown>): string {
   const stable: Record<string, unknown> = {};

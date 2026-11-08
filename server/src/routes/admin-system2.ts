@@ -281,8 +281,20 @@ export async function registerAdminSystemRoutes(scope: FastifyInstance): Promise
       const rows = (await sql<Record<string, unknown>>`
         SELECT * FROM ${sql.table(table)} LIMIT ${limit} OFFSET ${offset}
       `.execute(getDb())).rows;
-      const cols = rows.length ? Object.keys(rows[0] ?? {}) : [];
-      return { ok: true, table, columns: cols, rows, limit, offset };
+      let cols = rows.length ? Object.keys(rows[0] ?? {}) : [];
+      // A（终审实测）：devices 从 SECRET_TABLES 降级后，`select *` 仍会带出 secret_enc。
+      // 这里对 devices 做列 allowlist（保留排查需要的列，剔除密钥）。
+      const SECRET_COLUMNS: Record<string, string[]> = { devices: ['secret_enc'] };
+      const drop = SECRET_COLUMNS[table];
+      const safeRows = drop
+        ? rows.map((r) => {
+            const clone = { ...r };
+            for (const c of drop) delete clone[c];
+            return clone;
+          })
+        : rows;
+      if (drop) cols = cols.filter((c) => !drop.includes(c));
+      return { ok: true, table, columns: cols, rows: safeRows, limit, offset };
     } catch (e) {
       return reply.code(400).send({ ok: false, error: e instanceof Error ? e.message : '查询失败' });
     }

@@ -107,7 +107,9 @@ async function load() {
     history.value = d.history || [];
     // L12：切回时只更新 settings，不覆盖已编辑的草稿（否则未保存的修改被静默丢弃）
     for (const [k, v] of Object.entries(settings.value)) {
-      if (!draftInited) draft[k] = v;
+      // 4（终审）：新出现的设置键（部署新增 key、页面还没刷新过）也要进 draft，
+      // 否则那一行空白、保存会发 undefined
+      if (!draftInited || !(k in draft)) draft[k] = v;
     }
     draftInited = true;
     const me = await apiGet('/admin/api/me');
@@ -117,6 +119,8 @@ async function load() {
   }
 }
 
+// 3（终审）：保存后 load() 不再回写 draft —— 这是有意的取舍：保住用户正在编辑的内容。
+// 代价：若后端对值做了归一化/钳制，表格会显示未归一化的草稿值直到下次进页面。
 async function save(key) {
   try {
     await apiPost('/admin/api/settings', { key, value: draft[key] });

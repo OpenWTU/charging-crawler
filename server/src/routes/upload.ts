@@ -465,7 +465,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     }
     refreshBusy = true;
     try {
-      const { refreshRound } = await import('../domain/worker.js');
+      const { refreshRound, roundOk } = await import('../domain/worker.js');
       const result = await refreshRound();
       // M2：刷新成功后让首页缓存立刻失效
       try {
@@ -474,8 +474,8 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       } catch { /* 循环依赖时忽略 */ }
       // M1（复审实测）：原来用「不以 error/fail/no-token 开头」判定 ——
       // `areas=no-token|ports=no-token` 会被判成 ok:true，但实际什么都没抓到。
-      // 改成正向判定。
-      const ok = /(^|\|)areas=ok/i.test(result) || /(^|\|)ports=ok/i.test(result);
+      // B（终审）：直接用 worker 导出的 roundOk —— 它会把 `areas=ok:5/5 fail:2` 也算成"有失败"
+      const ok = roundOk(result);
       return reply.send({ ok, result });
     } catch (e) {
       return reply.code(500).send({

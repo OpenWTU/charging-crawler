@@ -211,11 +211,15 @@ export function loginAllowed(ip: string, username?: string): LoginVerdict {
 }
 
 /** 记一次失败；返回是否触发锁定 */
-export function noteLoginFailure(ip: string, username?: string): boolean {
+export function noteLoginFailure(ip: string, username?: string, userExists = true): boolean {
   const now = Math.floor(Date.now() / 1000);
   sweepLoginState(now);
   let locked = false;
   for (const key of keysOf(ip, username)) {
+    // C（终审）：真实用户名的爆破只计 ipu 桶 —— 若同时计 IP 桶，
+    // 任何人 40 个请求就能把该 IP 下**所有**管理员锁 10 分钟（TRUST_PROXY=false 时是全站）。
+    // IP 桶只用来挡「用户名不存在」的枚举。
+    if (key.startsWith('ip:') && userExists) continue;
     let s = loginState.get(key);
     if (!s || now - s.windowStart > LOGIN_WINDOW_SEC) {
       s = { fails: 0, windowStart: now, lockedUntil: 0 };

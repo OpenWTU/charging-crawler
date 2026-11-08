@@ -45,7 +45,7 @@
 
     <!-- 端口抽屉 -->
     <div v-if="drawer" class="a-drawer-mask" role="dialog" aria-modal="true" @click.self="drawer = ''">
-      <aside class="drawer">
+      <aside class="a-drawer">
         <header>
           <h2>{{ drawer }}</h2>
           <button class="btn ghost sm" @click="drawer = ''">关闭</button>
@@ -182,7 +182,7 @@ usePageLoad(load);
 .bar-fill { display: block; height: 6px; }
 .empty { text-align: center; padding: 24px; }
   /* L15：抽屉已统一为全局 .a-drawer-mask，这条是死代码（已删） */
-.drawer {
+.a-drawer {
   width: min(520px, 92vw); background: var(--card); padding: var(--sp-4);
   overflow: auto; display: grid; gap: var(--sp-3); align-content: start;
 }
