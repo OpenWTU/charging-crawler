@@ -3,10 +3,10 @@
 本文件格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-> 说明：仓库内代码另有一套历史内部版本号（当前 `2.3.8`），
+> 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
-## [未发布] - 管理后台（全部功能）
+## [v2.4.0] - 2026-11-08
 
 ### 新增：管理后台（17 个页面 + 多账号鉴权）
 - **鉴权**：多账号 + 三角色（super/ops/viewer），scrypt 口令，HMAC 会话（带账号版本，
@@ -41,6 +41,54 @@
 - 新表：`admin_audit` / `alert_state` / `config_history` / `p2p_validation` / `traffic_minute`
 - 补列：`admin_users.role/must_change/last_login_*`、`areas.deleted_at`、`devices.deleted_at`
 - 新索引：`idx_snapshots_captured`
+
+### 修复（三轮全仓库审查，共 120+ 项）
+
+**后端（8 严重 + 20 中等 + 12 轻微）**
+- **S1** 公开 `/api/now` 每次 0.19–0.49s 全程阻塞事件循环、无缓存无限流（实测 5ms 定时器
+  216ms 内 0 次触发）→ 60s 缓存 + 按 IP 限流
+- **S2** `/api/snapshot` 无「设备↔桩」归属校验 → 任意自注册设备可把别人的满桩刷成「空闲」
+  （实测 free=16）→ 加 `controllers.owner_device`，跨设备改写被拒
+- **S3** viewer 能读 `admin_users.pass_hash` / 下载整库备份 / 删令牌池且无审计 → 改 super/ops + 审计
+- **S4** 未验签的 `X-Device-Id` 能把任意设备打黑（持久 DoS）→ `bad_sig`/`bad_ts` 只按 IP 计数
+- **S5** 软删设备可无损复活且后台看不见 → 重新注册清 `deleted_at`
+- **S6** 错误处理器注册晚于路由 → 异常吐 SQLite 表名 → 移到第一个 register 之前
+- **S7** `duplicates` 同步 O(n²) 可打挂整站（2000 区域实测 6.8s）→ 超 300 区域拒绝
+- **S8** `db/query` 无行数上限（实测 200k 行 / 453MB RSS）→ 强制截断 5000 + 敏感表拦截
+- M1 上传路径无摘要去重（App 重试会落重复快照）→ 加 `snapshotDigest` 30 分钟窗口
+- M2 软删区域对公开接口无效 → 查询加 `deleted_at` 过滤
+- M3 webui 的 `POST /api/refresh` 在 Node 版不存在（404）→ 补路由
+- M4 后台「锁版本/回滚到 tag」写的 `update.request` 没人读 → update-node.sh 消费它
+- M5/M10/M11/M12/M14 同步查询、无界增长、全站共享限流桶、已成功区域被塞回失败集
+- M6/M7/M8/M9 P2P：ingest 校验形状 + 本地重算摘要、白名单降级链、越权不一致
+- L1 删 12 个死配置常量；L2 worker 间隔接线；L10 端口上限 32→64；L11 peerMeta 清扫；
+  L12 tokenPoolStats 改 SQL 聚合；L5 登录 Origin 精确比较
+
+**管理后台前端（5 严重 + 13 中等 + 4 轻微）**
+- **S1** 实时数据页整页文字对比度 1.1:1（`.live` 被 legacy CSS 污染成浅绿）→ 根类改名 + 显式补色
+- **S2** 401 永不换屏，会话过期后外壳卡死 → 全局 `admin-auth-expired` 事件回登录页
+- **S3** 设备拉黑零确认 → confirm
+- **S4** 角色门控只做了 3 个菜单，写按钮对 viewer 全开 → `useRole()` + 全页面门控
+- **S5** 令牌池清空无确认、失败无提示 → confirm + catch + 页头错误
+- M1/M2 概览首屏 3 接口各请求两次、图表永不刷新
+- M3/M4 实时页搜索每键一发、抽屉竞态
+- M5/M6/M7 加载更多丢筛选、无忙锁、末页仍可点
+- M10 上传审计 tab 硬编码文案不渲染数据 → 真表格
+- M18 坐标非法静默写 (0,0) → Number.isFinite + 范围校验
+- M29 无 keep-alive（切 tab 状态全丢）→ 动态组件 + KeepAlive（CDP 实测状态保留）
+- M30/M31 可访问性（dialog 语义/aria-current/符号区分）+ ≤600px 响应式
+- 删 18 个死代码文件（git 历史可回滚）+ 清理 admin.css 污染规则
+
+**Android（4 严重 + 13 中等 + 10 轻微）**
+- **S1** versionCode 双轨制：本地 215 / CI 1011039（相差 5000 倍）→ 统一公式 + 漂移断言
+- **S2** 刷新失败重复发 `__onRefreshDone`，假原因覆盖真原因
+- **S3** APK 下载白名单挂在使用可被改写的 `base()` → 改常量（官方域名 + GitHub Release）
+- **S4** `usesCleartextTraffic="true"` 全局放行（JWT/device_secret 明文上路）→ networkSecurityConfig
+- M1 桥超时 8-20s 短于原生最坏 20-23s → 统一到 +3s 余量
+- M2 历史失败被吞成空数组 → ok:false 抛错
+- M4 corrupt 不清；M5 Keystore 解密失败可辨识；M6 mDNS 不可达 + 无 stop；
+  M7 OverviewCache 原子；M8 Updater 线程池拒绝；M9 assets/www 取消跟踪；
+  M10 CI 补 Android job；M11 app.js 全局错误兜底；M12 桥回调清理；M13/M14 view 层修复
 
 ## [v2.3.8] - 2026-11-08
 
