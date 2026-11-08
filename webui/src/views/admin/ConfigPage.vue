@@ -1,5 +1,5 @@
 <template>
-  <div class="a-grid">
+  <div class="a-grid cfg-page">
     <p v-if="error" class="a-err">{{ error }}</p>
 
     <!-- 可改设置 -->
@@ -134,3 +134,47 @@ async function save(key) {
 // 用 onActivated 替代 onMounted（首次挂载也会触发，不会双跑）。
 usePageLoad(load);
 </script>
+
+<style scoped>
+/* ===== 移动端：配置表改「键/值堆叠」，长键名不再挤掉值 =====
+   实测 390px 下 p2p_validate_window_sec 这类键名占掉半屏，
+   值和说明被压到看不见，只能横向滑。改成一行一个配置。 */
+@media (max-width: 900px) {
+  .cfg-page :deep(table.a-tbl) thead { display: none; }
+
+  .cfg-page :deep(table.a-tbl) tbody tr {
+    display: block;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+  }
+  .cfg-page :deep(table.a-tbl) tbody tr:last-child { border-bottom: 0; }
+
+  .cfg-page :deep(table.a-tbl) td {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+    white-space: normal;
+  }
+  /* 用列序号自动生成标签，不用改模板 */
+  .cfg-page :deep(table.a-tbl) td::before {
+    flex: 0 0 46px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .cfg-page :deep(table.a-tbl) td:nth-child(1)::before { content: "键"; }
+  .cfg-page :deep(table.a-tbl) td:nth-child(2)::before { content: "值"; }
+  .cfg-page :deep(table.a-tbl) td:nth-child(3)::before { content: "说明"; }
+  .cfg-page :deep(table.a-tbl) td:nth-child(4)::before { content: "操作"; }
+
+  /* 长键名允许任意处断行 */
+  .cfg-page :deep(table.a-tbl) td.a-mono { word-break: break-all; flex: 1; }
+
+  /* 值控件占满剩余宽度，方便点 */
+  .cfg-page :deep(.a-select),
+  .cfg-page :deep(.a-input) {
+    flex: 1; min-width: 0; max-width: none; width: auto !important;
+  }
+}
+</style>

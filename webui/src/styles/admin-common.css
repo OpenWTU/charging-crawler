@@ -154,11 +154,20 @@
     row-gap: 10px;
   }
 
-  /* --- 表格：外层可横向滚动 + 触摸惯性 --- */
+  /* --- 表格：外层可横向滚动 + 触摸惯性 + 可见的细滚动条 ---
+     移动端浏览器默认隐藏滚动条，用户看不出表格还能往右滑，
+     这里强制画一条 6px 的滑块作为「可横滑」的提示。 */
   .a-panel {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
   }
+  .a-panel::-webkit-scrollbar { height: 6px; }
+  .a-panel::-webkit-scrollbar-thumb {
+    background: rgba(15, 23, 42, .22);
+    border-radius: 3px;
+  }
+  .a-panel::-webkit-scrollbar-track { background: transparent; }
   .a-tbl th,
   .a-tbl td {
     padding: 10px 8px;
