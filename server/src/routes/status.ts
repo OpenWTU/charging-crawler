@@ -10,7 +10,7 @@
  *  - banlist：当前被自动拉黑的设备/IP 数量
  */
 import fs from 'node:fs';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sql } from 'kysely';
 import { tokenPoolStats } from '../domain/health.js';
 import { getWorkerState } from '../domain/worker.js';
@@ -26,7 +26,11 @@ export async function registerStatusRoutes(app: FastifyInstance): Promise<void> 
   let statusCache: { at: number; body: unknown } | null = null;
   const STATUS_TTL_MS = 30_000;
 
-  app.get('/status', async (_req, reply) => {
+  app.get('/status', statusHandler);
+  // 尾斜杠形式（用户手动输入 /status/ 很常见）
+  app.get('/status/', statusHandler);
+
+  async function statusHandler(_req: FastifyRequest, reply: FastifyReply): Promise<unknown> {
     if (statusCache && Date.now() - statusCache.at < STATUS_TTL_MS) {
       return reply.header('X-Cache', 'hit').send(statusCache.body);
     }
@@ -121,5 +125,5 @@ export async function registerStatusRoutes(app: FastifyInstance): Promise<void> 
     statusCache = { at: Date.now(), body: statusBody };
 
     return statusBody;
-  });
+  }
 }

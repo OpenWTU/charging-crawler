@@ -6,6 +6,28 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.10] - 2026-11-08
+
+### 修复：带尾斜杠的页面路径返回 JSON 404
+`/admin/`、`/admin/login/`、`/status/` 这类带斜杠的地址会落到 `notFoundHandler`，
+返回一段 `{"ok":false,"error":"not_found"}` —— 用户手动输入或分享出去的链接常带斜杠。
+
+**修复**：为 `/admin`、`/admin/login`、`/status` 各补一条尾斜杠路由
+（`/admin/login` 的 handler 抽成 `sendLoginPage` 复用）。
+
+**全面排查同类路径问题**（本轮做的）：
+- 静态扫描前端源码：`fetch` / 动态 `import` / 模板 `href|src` / CSS `url()` / `window.open` /
+  `location.href` / `new URL` 的相对路径 —— **0 处真问题**
+  （唯一命中的 `import('../charts.js')` 是模块导入，Vite 打包后是绝对路径）
+- dist 三个入口的引用：**全部 `/` 开头**，0 个相对路径
+- CDP 从 `/admin/login` 进入 → 登录 → 遍历 17 个页面：**0 个 404、0 个加载失败、0 个 JS 异常**
+- 首页 `/` 交互（卡片、抽屉）：0 个 4xx
+
+**不改的**（设计如此）：
+- `/app.html`、`/admin.html` 直接访问 404 —— `static.ts` 注释写明只因 `/` 和 `/index.html`，
+  Android 走 `appassets` 虚拟域名，Python 版一致
+- `/api/now/` 这类 API 尾斜杠 404 —— 调用方不会带斜杠
+
 ## [v2.4.9] - 2026-11-08
 
 ### 紧急修复：首页「管理员」按钮点进去没有登录表单

@@ -183,14 +183,20 @@ function readBody<T extends Record<string, unknown>>(req: FastifyRequest): T {
 
 export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   /* ===== 页面 ===== */
+  // 页面路径要同时认带尾斜杠的形式：用户手动输入 /admin/ 或分享出去的链接常带斜杠，
+  // Fastify 默认不做尾斜杠归一化 → 会落到 notFoundHandler 返回一段 JSON（看起来像挂了）。
   app.get('/admin', async (_req, reply) => sendPage(reply, 'admin.html'));
-  app.get('/admin/login', async (_req, reply) => {
+  app.get('/admin/', async (_req, reply) => sendPage(reply, 'admin.html'));
+
+  const sendLoginPage = async (_req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     // 优先独立登录页；没有则回退主页面（前端会按未登录态渲染登录表单）
     const file = fs.existsSync(path.join(WEB_DIST, 'admin-login.html'))
       ? 'admin-login.html'
       : 'admin.html';
     return sendPage(reply, file);
-  });
+  };
+  app.get('/admin/login', sendLoginPage);
+  app.get('/admin/login/', sendLoginPage);
 
   /* ===== 公开：登录 / 登出 ===== */
   app.post('/admin/login', async (req, reply) => {
