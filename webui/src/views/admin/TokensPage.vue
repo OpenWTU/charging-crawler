@@ -15,12 +15,13 @@
           <span class="lbl">最快到期</span>
           <b>{{ expText }}</b>
         </div>
-        <button class="btn ghost sm" :disabled="busy" @click="purge">
+        <button v-if="canWrite" class="btn ghost sm" :disabled="busy" @click="purge">
           {{ busy ? '处理中…' : '清空已过期' }}
         </button>
       </div>
     </section>
 
+    <p v-if="error" class="a-err">{{ error }}</p>
     <p v-if="stats.valid === 0 && stats.count > 0" class="hint">
       ⚠ 令牌池已全部过期，服务器无法抓取。请打开手机 App →「令牌」页 → 重新获取，抓完会自动上传，这里 30 秒内刷新。
     </p>
@@ -52,7 +53,7 @@
             </td>
             <td class="err-cell" :title="t.last_error || ''">{{ t.last_error || '—' }}</td>
             <td class="num">
-              <button class="btn ghost sm" :disabled="busy" @click="del(t.id)">删除</button>
+              <button v-if="canWrite" class="btn ghost sm" :disabled="busy" @click="del(t.id)">删除</button>
             </td>
           </tr>
           <tr v-if="!list.length">
@@ -66,6 +67,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
 const emit = defineEmits(['changed']);
@@ -73,6 +75,8 @@ const emit = defineEmits(['changed']);
 const stats = ref({ count: 0, valid: 0, earliest_exp: null, cover_until: null, long_lived: 0 });
 const list = ref([]);
 const busy = ref(false);
+const error = ref('');
+const { canWrite } = useRole();
 
 const coverText = computed(() => fmtTs(stats.value.cover_until));
 const expText = computed(() => {
@@ -110,11 +114,17 @@ async function load() {
 
 async function purge() {
   if (busy.value) return;
+  if (!window.confirm('清空所有已过期令牌？此操作不可撤销。')) return;
   busy.value = true;
+  error.value = '';
   try {
-    await apiPost('/admin/api/tokens/purge', {});
+    const d = await apiPost('/admin/api/tokens/purge', {});
     await load();
     emit('changed');
+    if (!d.deleted) error.value = '没有需要清理的过期令牌';
+  } catch (e) {
+    // S5：原来没有 catch，403 时页面上什么都没发生
+    error.value = e.message || '清理失败';
   } finally {
     busy.value = false;
   }
@@ -122,11 +132,15 @@ async function purge() {
 
 async function del(id) {
   if (busy.value) return;
+  if (!window.confirm('删除该令牌？')) return;
   busy.value = true;
+  error.value = '';
   try {
     await apiPost('/admin/api/tokens/delete', { ids: [id] });
     await load();
     emit('changed');
+  } catch (e) {
+    error.value = e.message || '删除失败';
   } finally {
     busy.value = false;
   }

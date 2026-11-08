@@ -50,7 +50,7 @@
             <td class="a-mono a-small">{{ b.target }}</td>
             <td class="num">{{ Math.ceil(b.remaining_sec / 60) }} 分</td>
             <td class="a-small a-muted">{{ Object.entries(b.kinds || {}).map(([k, v]) => k + ':' + v).join(' ') }}</td>
-            <td><button class="a-btn sm" @click="unban(b.target)">解封</button></td>
+            <td><button v-if="canWrite" class="a-btn sm" @click="unban(b.target)">解封</button></td>
           </tr>
           <tr v-if="!bans.length"><td colspan="5" class="a-empty">当前没有封禁</td></tr>
         </tbody>
@@ -61,6 +61,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
 const summary = ref({ total: 0, uniqIps: 0, points: [] });
@@ -68,6 +69,7 @@ const endpoints = ref([]);
 const banlist = ref({ devices: 0, ips: 0 });
 const bans = ref([]);
 const error = ref('');
+const { canWrite } = useRole();
 
 const statusBars = computed(() => {
   const agg = {};

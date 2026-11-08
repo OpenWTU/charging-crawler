@@ -48,13 +48,36 @@ export async function apiFetch(path, opts = {}) {
   let resp;
   try {
     resp = await fetch(path, init);
+  } catch (e) {
+    // M24：把英文的 AbortError / Failed to fetch 换成中文
+    if (e && e.name === 'AbortError') {
+      throw new Error('请求超时（20 秒），请稍后重试', { cause: e });
+    }
+    throw new Error('网络不可达，请检查连接', { cause: e });
   } finally {
     clearTimeout(timer);
   }
 
-  if (resp.status === 401) throw new AuthError();
+  if (resp.status === 401) {
+    // S2：任何页面拿到 401 都广播一次，由 AdminBoot 统一切回登录页
+    // （原来只有 AdminLogin 处理，会话过期后外壳卡死、各页面静默失败）
+    try {
+      window.dispatchEvent(new CustomEvent('admin-auth-expired'));
+    } catch {
+      /* 非浏览器环境 */
+    }
+    throw new AuthError();
+  }
   if (resp.status === 429) {
-    const e = new Error('请求过于频繁，请稍后再试');
+    // M24：后端的 429 文案通常更具体（如"请 N 分钟后再试"）
+    let msg = '请求过于频繁，请稍后再试';
+    try {
+      const d = await resp.json();
+      if (d && typeof d.error === 'string' && d.error) msg = d.error;
+    } catch {
+      /* 用默认文案 */
+    }
+    const e = new Error(msg);
     e.status = 429;
     throw e;
   }
@@ -65,7 +88,9 @@ export async function apiFetch(path, opts = {}) {
     /* 非 JSON */
   }
   if (!resp.ok) {
-    const msg = (data && typeof data.error === 'string' && data.error) || `接口异常 HTTP ${resp.status}`;
+    let msg = (data && typeof data.error === 'string' && data.error) || `接口异常 HTTP ${resp.status}`;
+    // M25：403 补一句可操作提示（后端文案是"需要运维及以上权限"这类）
+    if (resp.status === 403 && !/权限/.test(msg)) msg = `${msg}（权限不足）`;
     const e = new Error(msg);
     e.status = resp.status;
     throw e;

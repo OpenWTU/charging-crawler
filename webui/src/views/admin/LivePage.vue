@@ -1,5 +1,5 @@
 <template>
-  <div class="live">
+  <div class="live-page">
     <div class="toolbar">
       <input v-model.trim="q" class="search" placeholder="搜索区域" @input="load" />
       <label class="chk"><input v-model="onlyFree" type="checkbox" @change="load" /> 只看有空位</label>
@@ -122,7 +122,14 @@ onMounted(load);
 </script>
 
 <style scoped>
-.live { display: grid; gap: var(--sp-3); }
+.live-page {
+  display: grid;
+  gap: var(--sp-3);
+  /* S1：legacy admin.css 的 .live 会把 color 设成 #a7f3d0（白底对比度 1.1:1）；
+     根类改名后这里再显式兜一次 color/字号 */
+  color: var(--text);
+  font-size: var(--fs-13, 13px);
+}
 .toolbar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .search, .sel {
   height: var(--ctl-36, 36px);

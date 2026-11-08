@@ -35,7 +35,7 @@
       </table>
       <div class="a-pad">
         <button
-v-if="c.code === 'ghost_ports'" class="a-btn sm danger"
+v-if="canWrite && c.code === 'ghost_ports'" class="a-btn sm danger"
                 @click="fixGhost">
 清理全部幽灵端口
 </button>
@@ -47,12 +47,14 @@ v-if="c.code === 'ghost_ports'" class="a-btn sm danger"
 
 <script setup>
 import { onMounted, ref } from 'vue';
+import { useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
 const checks = ref([]);
 const scannedAt = ref('');
 const busy = ref(false);
 const error = ref('');
+const { canWrite } = useRole();
 
 function sampleKeys(c) {
   const first = c.samples?.[0];

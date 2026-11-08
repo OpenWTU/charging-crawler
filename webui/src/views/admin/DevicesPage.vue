@@ -39,7 +39,7 @@ v-for="f in filters" :key="f.key" class="a-btn sm"
             <td class="a-small">{{ d.last_seen || '—' }}</td>
             <td>
               <button class="a-btn sm" @click="detail(d.device_id)">详情</button>
-              <button v-if="d.status === 'pending'" class="a-btn sm primary" @click="approve([d.device_id])">审批</button>
+              <button v-if="canWrite && d.status === 'pending'" class="a-btn sm primary" @click="approve([d.device_id])">审批</button>
               <button
 v-if="d.status !== 'revoked'" class="a-btn sm danger"
                       @click="revoke([d.device_id], true)">
@@ -90,6 +90,7 @@ v-if="d.status !== 'revoked'" class="a-btn sm danger"
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
 const filters = [
@@ -105,6 +106,7 @@ const counts = ref({});
 const checked = ref([]);
 const error = ref('');
 const drawer = ref(null);
+const { canWrite } = useRole();
 
 const allChecked = computed(() => items.value.length > 0 && checked.value.length === items.value.length);
 const autoApprove = ref(true);
@@ -157,6 +159,12 @@ async function approve(ids) {
 }
 
 async function revoke(ids, flag) {
+  // S3：拉黑会让设备立即停止上传，必须确认（原来点一下即生效，无意操作无撤销入口）
+  const who = ids.length === 1 ? ids[0].slice(0, 16) : `${ids.length} 台设备`;
+  const tip = flag
+    ? `确定拉黑${who}？该设备的上传会立即被拒绝。`
+    : `确定恢复${who}？恢复后可以继续上传。`;
+  if (!window.confirm(tip)) return;
   try {
     await apiPost('/admin/api/devices/revoke', { ids, revoked: flag });
     await load();

@@ -17,10 +17,10 @@
 
     <section class="a-panel a-pad">
       <div class="a-toolbar">
-        <button class="a-btn sm primary" :disabled="busy" @click="run">{{ busy ? '已触发…' : '立即抓取一轮' }}</button>
+        <button v-if="canWrite" class="a-btn sm primary" :disabled="busy" @click="run">{{ busy ? '已触发…' : '立即抓取一轮' }}</button>
         <button class="a-btn sm" @click="load">刷新</button>
         <span class="a-spacer" />
-        <button class="a-btn sm" @click="purge">清理 30 天前记录</button>
+        <button v-if="canWrite" class="a-btn sm" @click="purge">清理 30 天前记录</button>
       </div>
     </section>
 
@@ -58,6 +58,7 @@
 
 <script setup>
 import { onMounted, ref } from 'vue';
+import { useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
 const worker = ref({});
@@ -66,6 +67,7 @@ const stats = ref({ total: 0, ok: 0 });
 const timers = ref([]);
 const error = ref('');
 const busy = ref(false);
+const { canWrite } = useRole();
 
 async function load() {
   error.value = '';

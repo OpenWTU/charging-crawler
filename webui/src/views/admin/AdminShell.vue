@@ -53,7 +53,7 @@ v-for="m in group.items" :key="m.key" class="nav-item"
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue';
 import { apiGet } from '../../api/adminApi.js';
 import OverviewPage from './OverviewPage.vue';
 import LivePage from './LivePage.vue';
@@ -88,6 +88,10 @@ const ROLE_TEXT = { super: '超级管理员', ops: '运维', viewer: '只读' };
 const roleText = computed(() => ROLE_TEXT[props.me?.role] || props.me?.role || '');
 const isSuper = computed(() => props.me?.role === 'super');
 const canWrite = computed(() => ['super', 'ops'].includes(props.me?.role));
+
+provide('adminRole', computed(() => props.me?.role ?? 'viewer'));
+provide('canWrite', canWrite);
+provide('isSuper', isSuper);
 
 const alertCount = computed(() => (overview.value?.alerts || []).length);
 const tokenBadge = computed(() => {
@@ -130,7 +134,7 @@ const groups = computed(() => {
       items: [
         { key: 'system', label: '系统信息' },
         { key: 'config', label: '配置中心' },
-        ...(canWrite.value ? [{ key: 'release', label: '版本发布' }] : []),
+        ...(isSuper.value ? [{ key: 'release', label: '版本发布' }] : []),
         ...(isSuper.value ? [{ key: 'backup', label: '备份恢复' }] : []),
         ...(isSuper.value ? [{ key: 'accounts', label: '账号权限' }] : []),
       ],

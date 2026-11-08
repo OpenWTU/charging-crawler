@@ -11,7 +11,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { probeSession } from './api/adminApi.js';
 import AdminLogin from './views/admin/AdminLogin.vue';
 import AdminForcePassword from './views/admin/AdminForcePassword.vue';
@@ -51,13 +51,24 @@ async function onLogout() {
   notice.value = '已退出登录';
 }
 
+function onAuthExpired() {
+  if (state.value === 'login') return;
+  me.value = null;
+  state.value = 'login';
+  notice.value = '会话已过期，请重新登录';
+}
+
 onMounted(async () => {
+  window.addEventListener('admin-auth-expired', onAuthExpired);
   try {
     apply(await probeSession());
   } catch (e) {
     notice.value = e && e.message ? e.message : '';
     state.value = 'login';
   }
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('admin-auth-expired', onAuthExpired);
 });
 </script>
 
