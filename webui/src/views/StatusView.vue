@@ -139,11 +139,16 @@ const error = ref('');
 const errorText = ref('');
 let timer = 0;
 
+let loadSeq = 0;
+
 async function load() {
+  // M13：加请求序号 —— getStatus 最坏 15-20s，等待中用户点「重试」会有两次在飞，
+  // 旧响应后到会覆盖新响应
+  const my = ++loadSeq;
   loading.value = true;
   error.value = '';
   try {
-    data.value = await getStatus();
+    if (my !== loadSeq) return;    data.value = await getStatus();
   } catch (e) {
     error.value = 'status-load-failed';
     errorText.value = friendlyErrorText(e);

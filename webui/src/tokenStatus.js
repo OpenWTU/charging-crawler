@@ -93,6 +93,8 @@ function poll() {
     expiresAt.value = Number(s.expires_at) || 0;
     lastSettings.value = s;
     readError.value = '';
+  // M4：清除令牌后 corrupt 也要复位，否则 hasStored 仍为真 → statusText 还显示「已损坏」
+  corrupt.value = false;
     nowMs.value = Date.now();
     loading.value = false;
     readFailLogged = false;

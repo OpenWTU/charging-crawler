@@ -12,10 +12,6 @@ import {
 // /api/analytics：App 走 __onAnalytics 回调（20s 超时给空兜底），网页走 HTTP
 let analyticsSeq = 0;
 
-const EMPTY_ANALYTICS = Object.freeze({
-  samples: 0, heatmap: [], trend_24h: [], trend_7d: [],
-  ranking: [], forecast: [], weekday_weekend: {},
-});
 
 export async function getAnalytics() {
   if (!isApp) {
@@ -34,7 +30,8 @@ export async function getAnalytics() {
       }
     }
   } catch { /* ignore */ }
-  return { ...EMPTY_ANALYTICS };
+    // M14：原来返回 EMPTY_ANALYTICS（成功形状）→ 分析页把超时渲染成「暂无分析数据」
+    throw new Error('分析数据加载失败，请检查网络后重试');
 }
 
 // 空闲时段：/api/free-rate?days=14 → { ok, days, total_samples, points:[{hour,samples,free_rate}] }

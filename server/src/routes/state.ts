@@ -46,6 +46,9 @@ export async function overviewPayload(): Promise<Record<string, unknown>> {
 
   // token_ready / token_valid / earliest_exp 保留原语义，以池为准
   const common = {
+    // L4：webui 读 token_source（useHealth.js / App.vue），这里从来没返回过
+    // → 永远显示「服务器令牌」，"is-bad" 样式也永不触发
+    token_source: 'server',
     token_ready: pool.valid > 0,
     token_valid: pool.valid,
     earliest_exp: pool.earliest_exp,
