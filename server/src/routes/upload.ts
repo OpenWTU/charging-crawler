@@ -35,6 +35,7 @@ import { rateOk } from '../domain/ratelimit.js';
 import { broadcastSnapshot } from '../domain/p2p.js';
 import { snapshotDigest } from '../domain/worker.js';
 import { getSetting } from '../domain/adminsettings.js';
+import { markUpload, writeUploadAudit, type UploadMeta } from '../domain/uploadaudit.js';
 import { REGISTER_TOKEN } from '../config.js';
 import { logger } from '../logger.js';
 
@@ -51,6 +52,21 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     done(null, body as Buffer);
   });
 
+  // 上传审计：每个 /api/snapshot 与 /api/device/register 请求都落一行 upload_audit
+  // （钩子保证不漏；具体原因由 handler 里的 markUpload 提供）
+  app.addHook('onResponse', async (req, reply) => {
+    const path = (req.url.split('?')[0] ?? '');
+    if (path !== '/api/snapshot' && path !== '/api/device/register') return;
+    const r = req as typeof req & { uploadMeta?: UploadMeta };
+    const meta: UploadMeta = r.uploadMeta ?? {
+      kind: path === '/api/device/register' ? 'register' : 'snapshot',
+      reason: reply.statusCode < 300 ? 'ok' : 'unmarked',
+    };
+    const raw = req.body as unknown;
+    const size = Buffer.isBuffer(raw) ? raw.length : 0;
+    await writeUploadAudit(req, reply.statusCode, size, meta);
+  });
+
   const db = getDb();
 
   /* ================= /api/snapshot ================= */
@@ -62,9 +78,11 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
 
     if (length <= 0 || length > MAX_BODY) {
       const code = length > MAX_BODY ? 413 : 400;
+      markUpload(req, code === 413 ? 'too_large' : 'empty_body');
       return reply.code(code).send({ ok: false, error: '请求体大小非法' });
     }
     if (!rateOk(ip, 'upload', 12, 60)) {
+      markUpload(req, 'rate_limited');
       return reply.code(429).send({ ok: false, error: '上传过于频繁，请稍后再试' });
     }
 
@@ -75,21 +93,25 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
 
     // 自动拉黑检查（先于验签，被拉黑直接拒）
     if (isBanned(deviceId || null, ip)) {
+      markUpload(req, 'banned');
       return reply.code(403).send({ ok: false, error: '设备已被临时拉黑，请稍后再试' });
     }
 
     const tsInt = Number.parseInt(ts, 10);
     if (!Number.isFinite(tsInt)) {
       recordBan(deviceId || null, ip, 'bad_ts');
+      markUpload(req, 'bad_ts');
       return reply.code(401).send({ ok: false, error: '时间戳非法' });
     }
     if (Math.abs(Date.now() / 1000 - tsInt) > MAX_SKEW) {
       recordBan(deviceId || null, ip, 'bad_ts');
+      markUpload(req, 'bad_ts_expired');
       return reply.code(401).send({ ok: false, error: '时间戳过期' });
     }
     if (!NONCE_RE.test(nonce)) {
       // 只按 IP 计数：device_id 来自未验签的头，按 device 记会让人用垃圾 nonce 打掉别人的设备
       recordBan(null, ip, 'bad_sig');
+      markUpload(req, 'bad_nonce');
       return reply.code(401).send({ ok: false, error: 'nonce 非法' });
     }
 
@@ -123,10 +145,12 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     }
     if (!deviceOk) {
       recordBan(deviceId || null, ip, 'bad_sig');
+      markUpload(req, 'bad_sig', { deviceId: deviceId ?? null });
       return reply.code(401).send({ ok: false, error: '签名校验失败（设备未注册或已撤销）' });
     }
     if (pendingBlock) {
       // 自动审批关闭：pending 设备必须等管理员在后台审批后才能上传
+      markUpload(req, 'pending_approval', { deviceId: deviceId ?? null });
       return reply.code(403).send({
         ok: false,
         code: 'pending',
@@ -140,6 +164,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       obj = JSON.parse(body.toString('utf8'));
     } catch (e) {
       logger.debug({ err: e, ip, ua }, '[upload] 请求体不是合法 JSON');
+      markUpload(req, 'invalid');
       return reply.code(400).send({ ok: false, error: '数据非法' });
     }
     const rawToken = obj.token;
@@ -186,6 +211,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
         .execute();
     } catch {
       recordBan(deviceId || null, ip, 'replay');
+      markUpload(req, 'replay', { deviceId: deviceId ?? null });
       return reply.code(409).send({ ok: false, error: 'nonce 已使用（疑似重放）' });
     }
 
@@ -267,6 +293,7 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       });
     } catch (e) {
       logger.error({ err: e }, '[upload] 入库失败');
+      markUpload(req, 'error', { detail: 'storeSnapshot failed' });
       return reply.code(500).send({ ok: false, error: '入库失败' });
     }
 

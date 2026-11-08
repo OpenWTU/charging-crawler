@@ -443,6 +443,35 @@ export async function registerAdminDataRoutes(scope: FastifyInstance): Promise<v
     };
   });
 
+  /* ================= 上传审计（upload_audit） ================= */
+  scope.get('/admin/api/audit/upload', async (req) => {
+    const q = req.query as { result?: string; limit?: string; before_id?: string };
+    const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200);
+    const db = getDb();
+    let base = sql`
+      SELECT id, ts, ip, ua, size, result, detail FROM upload_audit WHERE 1 = 1`;
+    if (q.before_id) base = sql`${base} AND id < ${Number(q.before_id)}`;
+    if (q.result === 'ok') base = sql`${base} AND result = 'ok'`;
+    else if (q.result === 'fail') base = sql`${base} AND result <> 'ok'`;
+    const res = await sql<{
+      id: number; ts: string; ip: string | null; ua: string | null;
+      size: number | null; result: string | null; detail: string | null;
+    }>`${base} ORDER BY id DESC LIMIT ${limit}`.execute(db);
+    return {
+      ok: true,
+      items: res.rows.map((r) => {
+        let detail: unknown = null;
+        try {
+          detail = r.detail ? JSON.parse(r.detail) : null;
+        } catch {
+          detail = null;
+        }
+        return { ...r, detail };
+      }),
+      next_cursor: res.rows.at(-1)?.id ?? null,
+    };
+  });
+
   /* ================= 告警 ================= */
   scope.get('/admin/api/alerts', async () => {
     // P1 是实时求值（与概览同一套规则）；告警状态机（触发/恢复/忽略）在 P2 接 alert_state

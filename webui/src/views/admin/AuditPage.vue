@@ -52,9 +52,17 @@ const tabs = [
 ];
 const tab = ref('admin');
 const adminRows = ref([]);
+const upRows = ref([]);
+const upResult = ref('');
 const fUsername = ref('');
 const fAction = ref('');
 const error = ref('');
+
+function switchTab(k) {
+  tab.value = k;
+  if (k === 'upload') void loadUpload();
+  else void load();
+}
 
 async function load() {
   error.value = '';
@@ -70,5 +78,21 @@ async function load() {
   }
 }
 
-onMounted(load);
+async function loadUpload() {
+  error.value = '';
+  try {
+    const p = new URLSearchParams();
+    if (upResult.value) p.set('result', upResult.value);
+    p.set('limit', '100');
+    const d = await apiGet(`/admin/api/audit/upload?${p.toString()}`);
+    upRows.value = d.items || [];
+  } catch (e) {
+    error.value = e.message || '加载失败';
+  }
+}
+
+onMounted(() => {
+  load();
+  loadUpload();
+});
 </script>
