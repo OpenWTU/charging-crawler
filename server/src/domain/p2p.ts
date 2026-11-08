@@ -90,6 +90,14 @@ export interface P2pHandle {
   /** cb 的第二个参数是 libp2p 签名验证的来源 peerId（不可伪造），不是消息里的 sender */
   onSnapshot(cb: (msg: SnapshotMessage, fromId: string) => Promise<void>): void;
   peers(): P2pPeerInfo[];
+  /** 热更新白名单（原地改 Set，不重启；新增的节点调用方自己 dial） */
+  setWhitelist(ids: Iterable<string>): void;
+  /** 当前白名单大小 */
+  whitelistSize(): number;
+  /** 当前白名单内容（给后台展示与合并用） */
+  whitelistIds(): string[];
+  /** 断开某个 peer */
+  hangUp(peerId: string): Promise<void>;
   dial(addr: string): Promise<void>;
   stop(): Promise<void>;
 }
@@ -412,6 +420,32 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
       await node.dial(multiaddr(addr));
     },
 
+    // 白名单是同一个 Set 引用，原地增删后消息处理闭包立即可见（不重启）
+    setWhitelist(ids) {
+      const next = new Set(ids);
+      for (const id of [...whitelist]) {
+        if (!next.has(id)) whitelist.delete(id);
+      }
+      for (const id of next) whitelist.add(id);
+    },
+
+    whitelistSize() {
+      return whitelist.size;
+    },
+
+    whitelistIds() {
+      return [...whitelist];
+    },
+
+    // 从当前连接里找目标并关闭（不引入 peerIdFromString，避免新增依赖）
+    async hangUp(peerId) {
+      for (const conn of node.getConnections()) {
+        if (conn.remotePeer.toString() === peerId) {
+          await conn.close();
+        }
+      }
+    },
+
     async stop() {
       clearInterval(statusTimer);
       await node.stop();
@@ -481,6 +515,11 @@ async function ingestSnapshot(msg: SnapshotMessage, fromId: string): Promise<voi
 }
 
 /** 启动全局 P2P（P2P_ENABLED=true 时由 server 调用） */
+/** 当前 P2P 句柄（未启动时 null） */
+export function p2pHandle(): P2pHandle | null {
+  return p2pInstance;
+}
+
 export async function initP2p(): Promise<P2pHandle | null> {
   if (!P2P_ENABLED) return null;
   if (p2pInstance) return p2pInstance;

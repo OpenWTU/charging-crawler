@@ -41,6 +41,10 @@ import {
 } from '../domain/adminsettings.js';
 import { audit, listAudit } from '../domain/adminaudit.js';
 import { registerAdminDataRoutes } from './admin-data.js';
+import { registerAdminUnitRoutes } from './admin-units.js';
+import { registerAdminHistoryRoutes } from './admin-history.js';
+import { registerAdminOpsRoutes } from './admin-ops.js';
+import { registerAdminSystemRoutes } from './admin-system2.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../logger.js';
 
@@ -533,6 +537,14 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
 
     /* ----- 业务数据：概览 / 趋势 / 令牌池 / 实时 / 系统 / 告警 ----- */
     await registerAdminDataRoutes(scope);
+    /* ----- 上传设备 / 桩 / 区域 ----- */
+    await registerAdminUnitRoutes(scope);
+    /* ----- 历史分析 / CSV 导出 / 数据质量 ----- */
+    await registerAdminHistoryRoutes(scope);
+    /* ----- 节点网络 / 任务 / 日志 / 配置 / 流量 ----- */
+    await registerAdminOpsRoutes(scope);
+    /* ----- 版本发布 / 备份恢复 / 数据浏览器 ----- */
+    await registerAdminSystemRoutes(scope);
   }, { prefix: '' });
 
   logger.info('[admin] 管理后台路由已注册');

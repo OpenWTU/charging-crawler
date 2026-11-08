@@ -106,6 +106,47 @@ export function banlistStats(): { devices: number; ips: number } {
   return { devices: dev, ips };
 }
 
+export interface BanEntry {
+  kind: 'device' | 'ip';
+  target: string;
+  /** 窗口内各类失败计数 */
+  kinds: Partial<Record<BanKind, number>>;
+  remaining_sec: number;
+}
+
+/** 列出当前生效的封禁（管理后台「流量与限流」页） */
+export function listBans(limit = 100): BanEntry[] {
+  const now = Date.now() / 1000;
+  const out: BanEntry[] = [];
+  for (const [target, s] of byDevice) {
+    if (s.bannedUntil > now) {
+      out.push({ kind: 'device', target, kinds: s.kinds, remaining_sec: Math.ceil(s.bannedUntil - now) });
+    }
+  }
+  for (const [target, s] of byIp) {
+    if (s.bannedUntil > now) {
+      out.push({ kind: 'ip', target, kinds: s.kinds, remaining_sec: Math.ceil(s.bannedUntil - now) });
+    }
+  }
+  return out.sort((a, b) => b.remaining_sec - a.remaining_sec).slice(0, limit);
+}
+
+/** 按设备/ IP 主动解封；返回是否找到并解除了封禁 */
+export function unbanById(target: string): boolean {
+  let hit = false;
+  const dev = byDevice.get(target);
+  if (dev) {
+    byDevice.delete(target);
+    hit = true;
+  }
+  const ip = byIp.get(target);
+  if (ip) {
+    byIp.delete(target);
+    hit = true;
+  }
+  return hit;
+}
+
 /** 测试用：清空 */
 export function resetBanlist(): void {
   byDevice.clear();

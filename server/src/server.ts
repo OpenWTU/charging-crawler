@@ -26,6 +26,7 @@ import { registerMiscRoutes } from './routes/misc.js';
 import { registerUploadRoutes } from './routes/upload.js';
 import { registerStatusRoutes } from './routes/status.js';
 import { registerAdminRoutes, ensureAdminSeed } from './routes/admin.js';
+import { noteRequest } from './domain/traffic.js';
 
 export type App = FastifyInstance;
 
@@ -41,6 +42,15 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
     // 进 handler 前就拦掉并回 {"error":"internal_error"}，契约反而不一致）
     bodyLimit: MAX_BODY + 1024,
     ...opts,
+  });
+
+  // 流量统计（内存聚合，只统计 /api/* 与 /admin/api/*）
+  app.addHook('onResponse', async (req, reply) => {
+    try {
+      noteRequest(req.url, reply.statusCode, req.ip);
+    } catch {
+      /* 统计失败绝不影响响应 */
+    }
   });
 
   await app.register(cookie);
