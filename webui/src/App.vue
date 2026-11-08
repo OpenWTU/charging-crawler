@@ -104,6 +104,7 @@ v-model:show="showUpdate" :up="up" :app-version="appVersion"
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { showToast } from 'vant';
 import { isApp } from './api/index.js';
+import { clearLocalPorts } from './api/localPorts.js';
 import HomeView from './views/HomeView.vue';
 import AnalyticsView from './views/AnalyticsView.vue';
 import StatusView from './views/StatusView.vue';
@@ -264,6 +265,8 @@ function onUploadDone(raw) {
     // 明确告诉用户，否则会以为「端口数据没变 = 抓取失败」。
     showToast(`${s.rejected.length} 个桩的端口未能写入（归属属于其他设备），其余已上传`);
   }
+  // 上传成功 → 服务器已是权威，清掉本地端口快照（失败时保留，下次刷新仍优先显示本地）
+  if (!(s && s.ok === false)) clearLocalPorts();
   // 上传发生在 __onRefreshDone 之后：等云端真正写入后再刷新当前端口面板，
   // 并且刷新概览——顶部健康条的 token_ready / 采集异常计数 / 最后更新时间都来自
   // /api/overview，不 reload 会一直显示旧的「令牌不可用」。

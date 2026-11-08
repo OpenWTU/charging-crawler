@@ -13,6 +13,7 @@ import {
   isApp, getJSON, requestJSON, isObj, numOrNull, coordsQuery,
   awaitGlobalBridge, callBridgeJSON,
 } from './transport.js';
+import { allLocalAreas } from './localPorts.js';
 import { normalizeDevices } from './ports.js';
 
 // 概览：网页走 /api/overview；App 优先读 getState() 桥，
@@ -210,6 +211,9 @@ export function openAmap(name, lat, lng, startLat, startLng) {
 let areasPortsSeq = 0;
 
 export async function getAreasPorts() {
+  // 本地优先：抓完立即渲染端口级状态，不等服务器回写。
+  const local = allLocalAreas();
+  if (local) return withAreaDeviceGroups({ ok: true, areas: local });
   if (!isApp) {
     const d = await getJSON('/api/areas-ports');
     return withAreaDeviceGroups(d);

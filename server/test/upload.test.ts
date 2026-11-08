@@ -15,7 +15,6 @@ import { migrate } from '../src/db/migrate.js';
 import { NodeSqliteDatabase } from '../src/db/node-sqlite.js';
 import { buildServer } from '../src/server.js';
 import { deviceSignature } from '../src/domain/crypto.js';
-import { invalidateSettingsCache } from '../src/domain/adminsettings.js';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'charge-upload-test-'));
 const dbPath = path.join(tmpDir, 'charge.db');
@@ -198,7 +197,7 @@ describe('快照上传', () => {
 });
 
 
-describe('S2：设备↔桩归属（跨设备改写被拒）', () => {
+describe('桩不属于任何设备：任何设备都能写同一个桩', () => {
   const pileHex = 'AABBCCDD';
   const ts = () => String(Math.floor(Date.now() / 1000));
   const deviceB = 'ff22ee33dd44cc55';
@@ -233,15 +232,11 @@ describe('S2：设备↔桩归属（跨设备改写被拒）', () => {
     );
   }
 
-  it('显式开启 port_owner_guard 后，跨设备改写被拒绝', async () => {
-    // 2026-11-08：排他默认关闭（线上是多设备众包），这个测试改为显式打开开关验证。
-    // 默认「谁都能写」的行为由 regression-r6.test.ts 的「多设备众包」用例覆盖。
+  it('设备 A 首报后，设备 B 改写同一个桩会生效（owner_device 变成 B）', async () => {
+    // 2026-11-08 修正：原用例断言「跨设备改写被拒」，前提是错的 ——
+    // 桩是公共设施、不属于任何设备，多设备众包上报同一批桩是正常用法。
+    // 现在断言反向：B 的数据必须写进去。
     const db = createDb(dbPath);
-    await sql`
-      INSERT INTO app_settings (key, value) VALUES ('port_owner_guard', 'true')
-      ON CONFLICT (key) DO UPDATE SET value = 'true'
-    `.execute(db);
-    invalidateSettingsCache();
     // 区域必须在 areas 表里，否则 splitValidAreas 会判「未知充电区」
     await sql`
       INSERT INTO areas (area_id, name, first_seen, last_seen)
@@ -286,26 +281,21 @@ describe('S2：设备↔桩归属（跨设备改写被拒）', () => {
       ports: [{ device_hex: pileHex, ports: [{ port: '01', status: '充电中' }, { port: '02', status: '充电中' }] }],
     };
     const resB = await signedB('cccc0000dddd0002', bodyB);
-    // 快照本身可以收（区域数据），但端口状态不能被改写
     expect(resB.statusCode).toBe(200);
+    const bodyBJson = resB.json() as { rejected?: string[] };
+    expect(bodyBJson.rejected).toBeUndefined(); // 没有任何桩被拒
 
     const after = await sql<{ port: string; status: string | null }>`
       SELECT port, status FROM port_states WHERE device_hex = ${pileHex} ORDER BY port
     `.execute(db);
     const afterStatus = after.rows.map((r) => `${r.port}:${r.status}`).join(',');
-    expect(afterStatus).toBe(beforeStatus); // 关键断言：没被跨设备改写
+    expect(afterStatus).not.toBe(beforeStatus);        // 关键断言：B 的数据写进去了
+    expect(afterStatus).toContain('充电中');
 
-    // 归属仍然是 A
+    // owner_device 变成「最后写入者」B（只作诊断，不作准入）
     const owner2 = await sql<{ owner_device: string | null }>`
       SELECT owner_device FROM controllers WHERE device_hex = ${pileHex}
     `.execute(db);
-    expect(owner2.rows[0]?.owner_device).toBe(deviceId);
-
-    // 恢复默认（不排他），避免影响同一文件里后续用例
-    await sql`
-      INSERT INTO app_settings (key, value) VALUES ('port_owner_guard', 'false')
-      ON CONFLICT (key) DO UPDATE SET value = 'false'
-    `.execute(db);
-    invalidateSettingsCache();
+    expect(owner2.rows[0]?.owner_device).toBe(deviceB);
   });
 });

@@ -6,6 +6,36 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.17] - 2026-11-08
+
+### 彻底移除桩归属：**桩是公共设施，不属于任何设备/用户**
+v2.4.16 只是把排他默认关掉，`owner_device` / `port_owner_guard` 这套概念仍然在。
+用户指出这是根本性的理解错误 —— **充电桩不属于任何一个用户**，谁抓到都能报，
+所以「归属」本身就不该存在。本次把它整套删掉：
+
+- 删除设置项 `port_owner_guard`
+- 删除 `upload.ts` 里的首见登记、跨设备拒绝、僵尸 owner 接管（约 80 行）
+- `controllers.owner_device` 保留，但语义改为**「最后写入者」**，纯诊断用途，不参与任何准入判断
+- 用例反向重写：设备 A 首报后**设备 B 改写必须生效**，且响应里不能有 `rejected`
+
+### 新增：App 抓到的端口数据本地优先渲染
+**问题**：`__onLocalState` 的载荷里其实**早就有 `ports`**（Android 的 `RefreshService`
+在补全端口后会再推一版），但前端 `applyLocalState` 只吃 `areas`，端口被整个丢掉 ——
+于是端口面板永远等服务器回写，上传被拒或慢的时候，用户看不到自己刚抓到的端口状态。
+
+**实现**（新增 `webui/src/api/localPorts.js`，无依赖，避免 ports/areas 循环引用）：
+
+| 环节 | 行为 |
+|---|---|
+| Android 推送 | `RefreshService` 的 `portArr` 每项补 `area`（来自 `/api/controllers` 的 `area_name`）与 `code` |
+| 前端接住 | `applyLocalState` 调 `applyLocalPorts(state.ports)`，按 `device_hex` 建索引 |
+| 读取 | `getAreaPorts(name)` / `getAreasPorts()` 先查本地，命中就用本地（不等服务器） |
+| 上传成功 | `clearLocalPorts()` → 立刻回到「服务器权威」 |
+| 上传失败 | 保留本地快照，下次刷新仍优先显示自己抓到的数据 |
+| 兜底 | TTL 10 分钟，避免长时间停在很久以前的一份快照上 |
+
+**验证**：`localPorts.js` 的 7 组断言全过（注入/按区域取/全量归组/清空/覆盖/空载荷不破坏）。
+
 ## [v2.4.16] - 2026-11-08
 
 ### 修正：桩归属不该按设备排他（多设备众包是正常场景）

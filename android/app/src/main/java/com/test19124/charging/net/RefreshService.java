@@ -242,6 +242,11 @@ public final class RefreshService {
                             if (norm.length() > 0) {
                                 JSONObject e = new JSONObject();
                                 e.put("device_hex", ci.optString("device_hex", ""));
+                                // ★ 带上区域与编号：前端要按区域归组渲染，
+                                // 只给 device_hex 的话前端无法把本地端口挂到区域卡片下。
+                                // 字段名与 /api/controllers 的返回保持一致（area_name/code）。
+                                e.put("area", ci.optString("area_name", ""));
+                                e.put("code", code);
                                 e.put("ports", norm);
                                 portArr.put(e);
                             }

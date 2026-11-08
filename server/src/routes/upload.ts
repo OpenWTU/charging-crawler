@@ -39,29 +39,6 @@ import { markUpload, writeUploadAudit, type UploadMeta } from '../domain/uploada
 import { REGISTER_TOKEN } from '../config.js';
 import { logger } from '../logger.js';
 
-/**
- * 桩归属的「僵尸 owner」阈值：原 owner 超过这么久没上传过，就允许别的设备接管。
- *
- * 起因（2026-11-08 线上实测）：一个只上报过 1 次的设备把全部 39 个桩都认领了
- * （一次上传的 payload 里带了全部桩的 ports），之后用户重装 App / 换机导致
- * device_id 变化，连续 8 次上传全部 owner_rejected，数据再也写不进去。
- * 永久锁定太脆弱，加一个「不活跃可接管」的口子。
- */
-const OWNER_STALE_MS = 7 * 86400_000;
-
-/** 本地时间串（YYYY-MM-DD HH:MM:SS）→ 毫秒时间戳（不走 Date.parse，避免时区歧义） */
-function toEpochLocal(s: string): number {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(String(s));
-  if (!m) {
-    const t = Date.parse(String(s));
-    return Number.isFinite(t) ? t : 0;
-  }
-  return new Date(
-    Number(m[1]), Number(m[2]) - 1, Number(m[3]),
-    Number(m[4]), Number(m[5]), Number(m[6]),
-  ).getTime();
-}
-
 /** 常量时间比较 hex 字符串（Python 用 hmac.compare_digest） */
 function hexEqual(a: string, b: string): boolean {
   const ba = Buffer.from(a, 'utf8');
@@ -302,17 +279,6 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     }
 
     // 单事务落库
-    // 2026-11-08 修正：端口数据的「设备排他」默认关闭。
-    // 线上实测是 17 台设备众包上报同一批 39 个桩（每台单次都带全部区域），排他等于
-    // 只让首见设备写、其它 16 台的数据静默丢弃 —— 那是我 S2 的设计错误。
-    // 现在默认 false（谁都能写，owner_device 只记「最后写入者」用于排查）。
-    //
-    // ⚠️ 必须在事务**外**读：getSetting 走的是 getDb() 的另一个连接，
-    // 放进 db.transaction() 里会和 trx 争锁 → 上传整体 20 秒超时（已实测踩到）。
-    let ownerGuardOn = false;
-    try {
-      ownerGuardOn = (await getSetting('port_owner_guard')) === true;
-    } catch { /* 读不到就用默认（不排他） */ }
 
     let snapshotId = 0;
     try {
@@ -355,91 +321,17 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
         }
 
         rejectedDevices = [];
-        // S2：设备↔桩归属校验（仅 ownerGuardOn 时生效）
-        // 原来只判 device_hex 存在于 controllers —— 任意自注册设备都能上报别人的桩，
-        // 把满桩刷成「空闲」（实测 /api/area-ports 立刻由 full 变 free=16）。
-        // 规则：首见登记归属；同设备可继续写；跨设备降级为「只记日志、不写 port_states」。
+        // 桩是公共设施，**不属于任何设备/用户** —— 任何已注册设备都可以上报任意桩。
+        // （2026-11-08 修正：我曾按「一个桩锁给一个设备」实现过排他校验，
+        //  那是基于错误的产品理解；线上 17 台设备众包上报同一批 39 个桩是正常用法。）
+        // 这里只把 owner_device 记成「最后写入者」，纯诊断用途，不参与任何准入判断。
         for (const item of cleanPortsResult) {
-          let owner = ownerMap.get(item.device_hex) ?? null;
-          if (!ownerGuardOn) {
-            // 不排他：任何已注册设备都能写；owner_device 只记「最后写入者」
-            if (deviceId && owner !== deviceId) {
-              await sql`
-                UPDATE controllers SET owner_device = ${deviceId}
-                 WHERE device_hex = ${item.device_hex}
-              `.execute(trx);
-              ownerMap.set(item.device_hex, deviceId);
-            }
-          } else if (!owner && deviceId) {
-            // M11（复审）：原来不检查影响行数，并发两个设备首报同一个桩时，
-            // 落败方仍然往 ownerMap 里塞自己并继续写 port_states。改为按影响行数判定，
-            // 抢输就重新读归属并按跨设备规则处理。
-            const claimed = await sql`
+          if (deviceId && ownerMap.get(item.device_hex) !== deviceId) {
+            await sql`
               UPDATE controllers SET owner_device = ${deviceId}
-               WHERE device_hex = ${item.device_hex} AND COALESCE(owner_device, '') = ''
+               WHERE device_hex = ${item.device_hex}
             `.execute(trx);
-            if (Number(claimed.numAffectedRows ?? 0) > 0) {
-              owner = deviceId;
-              ownerMap.set(item.device_hex, deviceId);
-            } else {
-              const re = await sql<{ owner_device: string | null }>`
-                SELECT owner_device FROM controllers WHERE device_hex = ${item.device_hex}
-              `.execute(trx);
-              owner = re.rows[0]?.owner_device ?? null;
-              ownerMap.set(item.device_hex, owner);
-            }
-          }
-          if (ownerGuardOn && owner && deviceId && owner !== deviceId) {
-            // S2 的补充（2026-11-08 实测踩到）：原规则是「首见登记 + 永久锁定」，
-            // 一个只上报过 1 次的设备把全部 39 个桩都认领了，之后用户换设备/重装 App
-            // （device_id 变了）就再也写不进去，audit 里连续 owner_rejected。
-            // 这里加「原 owner 长期不活跃则允许接管」：查它的 last_seen，
-            // 超过 OWNER_STALE_MS 没动静就视为已弃用，把归属转给当前设备。
-            let takeover = false;
-            try {
-              const own = await sql<{ last_seen: string | null; deleted_at: string | null }>`
-                SELECT last_seen, deleted_at FROM devices WHERE device_id = ${owner}
-              `.execute(trx);
-              const row = own.rows[0];
-              const lastSeenMs = row?.last_seen ? toEpochLocal(row.last_seen) : 0;
-              const stale = !row || row.deleted_at || !lastSeenMs
-                || Date.now() - lastSeenMs > OWNER_STALE_MS;
-              if (stale) {
-                const took = await sql`
-                  UPDATE controllers SET owner_device = ${deviceId}
-                   WHERE device_hex = ${item.device_hex} AND owner_device = ${owner}
-                `.execute(trx);
-                if (Number(took.numAffectedRows ?? 0) > 0) {
-                  takeover = true;
-                  owner = deviceId;
-                  ownerMap.set(item.device_hex, deviceId);
-                  logger.info(
-                    {
-                      device_hex: item.device_hex,
-                      old_owner: owner,
-                      new_owner: deviceId,
-                      old_last_seen: row?.last_seen ?? null,
-                    },
-                    '[upload] 原 owner 长期不活跃，归属已转移',
-                  );
-                }
-              }
-            } catch (e) {
-              logger.warn({ err: e }, '[upload] 检查 owner 活跃度失败，按原规则拒绝');
-            }
-            if (!takeover) {
-              // S2（复审）：跨设备拒绝必须留痕（原来只有一条 logger.warn，后台/客户端都看不到）
-              rejectedDevices.push(item.device_hex);
-              markUpload(req, 'owner_rejected', {
-                deviceId,
-                detail: `device_hex=${item.device_hex} owner=${owner}`,
-              });
-              logger.warn(
-                { device_hex: item.device_hex, owner, attacker: deviceId, ip },
-                '[upload] 跨设备改写桩状态已被拒绝',
-              );
-              continue; // 不写 port_states / controllers.updated_at / pile_samples
-            }
+            ownerMap.set(item.device_hex, deviceId);
           }
           for (const p of item.ports) {
             await trx

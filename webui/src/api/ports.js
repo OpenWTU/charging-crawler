@@ -15,6 +15,7 @@
 import {
   isApp, getJSON, isObj, awaitGlobalBridge, callBridgeJSON,
 } from './transport.js';
+import { devicesForArea } from './localPorts.js';
 
 // ---- 状态 → 分组（契约 3.1，与后端 PORT_STATUS_GROUPS / PORT_CODE_GROUPS 对齐）----
 export const PORT_GROUPS = Object.freeze(['free', 'busy', 'unavailable', 'unknown']);
@@ -167,6 +168,10 @@ export function normalizePortsPayload(raw, areaName) {
 let portsSeq = 0;
 
 export async function getAreaPorts(name) {
+  // 本地优先：App 刚抓到的端口比服务器回写的新（上传可能还没完成甚至被拒）。
+  // 上传成功后 App 会 clearLocalPorts()，这里自然回到服务器权威。
+  const localDevices = devicesForArea(name);
+  if (localDevices) return normalizePortsPayload({ devices: localDevices, area: name }, name);
   if (isApp) {
     const host = window.AndroidHost;
     if (host && typeof host.getAreaPorts === 'function') {

@@ -13,6 +13,7 @@ import { computed, ref } from 'vue';
 import {
   getOverview, getAreasPorts, getAreaCoords, getNow, getLocation, getSettings, isApp,
 } from '../api/index.js';
+import { applyLocalPorts } from '../api/localPorts.js';
 import {
   validGeo, toGcj, gcjToBd, distanceM, readGeoCache, writeGeoCache, clearGeoCache,
 } from '../geo.js';
@@ -180,6 +181,12 @@ export function useLiveData(notify) {
     if (!state || typeof state !== 'object') return false;
     const rows = Array.isArray(state.areas) ? state.areas : null;
     if (!rows || rows.length === 0) return false;
+    // ★ 端口也一起落地：Android 的 __onLocalState 载荷里带 ports（RefreshService
+    // 补全端口后会再推一版）。以前这里只吃 areas，ports 被整个丢掉，导致端口面板
+    // 永远等服务器回写 —— 上传被拒时用户就看不到自己刚抓到的端口状态。
+    if (Array.isArray(state.ports) && state.ports.length) {
+      applyLocalPorts(state.ports);
+    }
     const firstLoad = !loaded.value;
     areas.value = rows;
     updatedAt.value = state.data_updated_at || state.now || '';
