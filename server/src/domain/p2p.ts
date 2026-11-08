@@ -43,6 +43,7 @@ import { sql } from '../db/index.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../logger.js';
 import { storeSnapshot, snapshotDigest } from './worker.js';
+import { recordValidation, validateIncoming } from './p2pvalidate.js';
 import { nowStr } from './store.js';
 
 const TOPIC = 'charge-snapshots';
@@ -86,7 +87,8 @@ export interface P2pHandle {
   peerId: string;
   addresses: string[];
   broadcast(msg: Omit<SnapshotMessage, 'v' | 'sender'>): Promise<void>;
-  onSnapshot(cb: (msg: SnapshotMessage) => Promise<void>): void;
+  /** cb 的第二个参数是 libp2p 签名验证的来源 peerId（不可伪造），不是消息里的 sender */
+  onSnapshot(cb: (msg: SnapshotMessage, fromId: string) => Promise<void>): void;
   peers(): P2pPeerInfo[];
   dial(addr: string): Promise<void>;
   stop(): Promise<void>;
@@ -358,7 +360,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
           stats: prev?.stats ?? null,
         });
         // 回调异常必须就地捕获：事件回调里丢弃的 Promise rejection 会让 Node 24 直接退出进程
-        void Promise.resolve(cb(msg)).catch((e: unknown) => {
+        void Promise.resolve(cb(msg, fromId)).catch((e: unknown) => {
           logger.warn({ err: e }, '[p2p] onSnapshot 回调异常');
         });
       });
@@ -427,7 +429,7 @@ let p2pWhitelistSize = 0;
 let whitelistRetryTimer: NodeJS.Timeout | null = null;
 
 /** 收到广播 → 落库（body_sha256 去重）。白名单已在 onSnapshot 层校验。 */
-async function ingestSnapshot(msg: SnapshotMessage): Promise<void> {
+async function ingestSnapshot(msg: SnapshotMessage, fromId: string): Promise<void> {
   const db = getDb();
   // 与 storeSnapshot 用同样的 30 分钟去重窗口：不算时间窗的话，夜间 idle==total 这类
   // 「内容完全相同但时间不同」的正常快照会被永久判重丢弃
@@ -439,9 +441,38 @@ async function ingestSnapshot(msg: SnapshotMessage): Promise<void> {
        LIMIT 1
     `.execute(db);
     if (dup.rows[0]) return; // 已存在（可能是自己广播回来）
-    await storeSnapshot(msg.payload, 'p2p', db);
+
+    // 跨节点互校（详见 docs/p2p-validation.md）：与本节点「同一时刻」的数据比对
+    const vr = await validateIncoming(msg.payload, msg.ts, db);
+    if (vr.decision !== 'accept' || vr.deviation !== null) {
+      // accept 且算出了 deviation 也记一条，用于统计节点可信度
+      await recordValidation(fromId, msg.ts, msg.payload?.captured_at as string | undefined,
+        msg.body_sha256, vr, db);
+    }
+    if (vr.decision === 'drop') {
+      logger.warn(
+        {
+          peer: fromId.slice(0, 16),
+          sha: msg.body_sha256.slice(0, 12),
+          deviation: vr.deviation,
+          reason: vr.reason,
+        },
+        '[p2p] 快照偏差过大，已丢弃',
+      );
+      return;
+    }
+    // suspect（warn 模式）：落库但打标记，便于事后筛出
+    const payload = vr.decision === 'suspect'
+      ? { ...msg.payload, _suspect: true }
+      : msg.payload;
+    await storeSnapshot(payload, 'p2p', db);
     logger.info(
-      { sender: msg.sender.slice(0, 16), sha: msg.body_sha256.slice(0, 12) },
+      {
+        peer: fromId.slice(0, 16),
+        sha: msg.body_sha256.slice(0, 12),
+        validation: vr.decision,
+        deviation: vr.deviation,
+      },
       '[p2p] 收到并落库快照',
     );
   } catch (e) {

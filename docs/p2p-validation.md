@@ -182,7 +182,7 @@ const idleDev    = Math.abs(rateRemote - rateLocal);        // 0..1
 // 故障数单独看（硬件问题两边应该一致，差异大说明有问题）
 const faultGap   = Math.abs(Number(r.fault) - Number(l.fault));
 const faultDev   = faultGap >= FAULT_ABS_MIN && faultGap / total >= FAULT_REL_MIN
-                   ? FAULT_WEIGHT : 0;                       // 默认 >=3 且 >=20% → 记 0.5
+                   ? FAULT_WEIGHT : 0;                       // 默认 >=3 且 >=10% → 记 0.6
 
 const areaDev = Math.max(idleDev, faultDev);
 ```
@@ -197,6 +197,8 @@ const deviation = Math.max(...comparable.map(c => c.areaDev));
 - 区域大小差异大（24 口 vs 48 口），绝对值不可比
 - 归一化后阈值（如 0.5 = 相差 50 个百分点）语义直观
 - 空闲率正是这个产品对外表达的核心指标
+
+> 落地值：`FAULT_WEIGHT = 0.6`（必须大于默认阈值 0.5，否则"命中故障"会被 0.5 > 0.5 的边界判成采纳）。
 
 **为什么故障数单独拎出来**
 
@@ -328,7 +330,7 @@ CREATE INDEX IF NOT EXISTS idx_p2pval_ts ON p2p_validation(ts);
 | `p2p_validate_window_sec` | `600` | 60–3600 | 基准时间窗（±秒） |
 | `p2p_validate_min_areas` | `3` | 1–20 | 最少可比区域数 |
 | `p2p_validate_fault_min_abs` | `3` | 0–20 | 故障差绝对值门槛 |
-| `p2p_validate_fault_min_rel` | `0.2` | 0–1 | 故障差相对门槛 |
+| `p2p_validate_fault_min_rel` | `0.1` | 0–1 | 故障差相对门槛 |
 
 后端启动时从 `app_settings` 读，**每次校验时重新读**（走内存缓存 + 写时失效），保证改完立即生效。
 
@@ -491,7 +493,7 @@ export function invalidateConfigCache(): void;          // 配置写入后调用
 | 区域 `total` 不一致 | 该区域进 `skipped`，不影响其它 |
 | 区域 `total=0` | 跳过，不崩 |
 | 远端 areas 缺失 | `drop(invalid_payload)` |
-| 故障数远端 6 / 本地 0（total=48） | `drop`（fault 路径触发） |
+| 故障数远端 6 / 本地 0（total=48，差 12.5% > 10%） | `drop`（fault 路径触发） |
 | 内部抛异常（mock db 失败） | `accept` + 记 error |
 
 ### 11.2 集成测试（两节点）
