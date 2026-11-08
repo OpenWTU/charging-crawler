@@ -152,6 +152,9 @@ const themeOptions = [
 
 const uploadToken = ref(true);
 const uploadBusy = ref(false);
+// 这两个 let 必须在 readDiagnoseCached() 首次调用之前完成初始化（见下方函数注释）
+let diagnoseCache = null;
+let diagnoseCacheAt = 0;
 const diagnose = ref(readDiagnoseCached());
 const reacquiring = ref(false);
 let loadErrorNotified = false;
@@ -223,8 +226,9 @@ function readDiagnoseStored() {
 
 // 轻微2：原生从不返回 diagnose 字段，但共享轮询每 2s 都会 getItem + JSON.parse 同一份。
 // 加 30 秒缓存，避免无意义的解析开销。
-let diagnoseCache = null;
-let diagnoseCacheAt = 0;
+// ⚠️ 缓存变量必须在下面 `const diagnose = ref(readDiagnoseCached())` **之前**声明，
+// 否则 function 提升后进入函数体访问 let → TDZ：Cannot access 'x' before initialization，
+// 整个 Settings 组件的 setup 抛错 → 设置页只剩 tab、内容全空。
 function readDiagnoseCached() {
   const now = Date.now();
   if (diagnoseCache !== null && now - diagnoseCacheAt < 30000) return diagnoseCache;

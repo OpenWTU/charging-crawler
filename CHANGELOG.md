@@ -6,6 +6,37 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.12] - 2026-11-08
+
+### 紧急修复：设置页只剩 tab、内容全空
+**症状**：App 底部「设置」tab 能切过去，但页面里什么都没有（顶部卡片还在）。
+
+**根因（TDZ）**：第 8 轮给诊断状态加 30 秒缓存时，把两个 `let` 写在了函数定义处，
+而 `readDiagnoseCached()` 在**更早**的一行就被调用了：
+
+```js
+51:  const diagnose = ref(readDiagnoseCached());   // ← 这里调用
+...
+122: let diagnoseCache = null;                    // ← 变量在这里才声明
+123: let diagnoseCacheAt = 0;
+124: function readDiagnoseCached() { ... }
+```
+
+`function` 声明会提升（所以能调用），但函数体里访问的 `let diagnoseCache` 处于
+**暂时性死区** → `ReferenceError: Cannot access 'x' before initialization`
+→ `Settings.vue` 的 `setup()` 抛错 → 整个组件不渲染。
+
+**修复**：把两个 `let` 提到首次调用之前。
+
+**验证**（CDP 注入假桥、加载 APK 里的 app.html、切到设置 tab）：
+- 修复前：`[ERR] Vue 渲染异常: ReferenceError: Cannot access 'ne' before initialization`，
+  `.settings-page` 不存在、0 个分组、0 个 cell
+- 修复后：**0 错误**，`getSettings()` 被调用，截图里「账户 / 上传 / 外观 / 诊断」四组全部渲染
+  （登录令牌、重新获取令牌、清除令牌、上传开关、跟随系统·明亮·深色、诊断抓包）
+
+> 影响范围：v2.4.7 起的 APK 都有这个问题（`Settings.vue` 从 v2.4.7 到 v2.4.11 一字未改）。
+> 之前没暴露是因为 v2.4.7 整个白屏、v2.4.8+ 才进得去。
+
 ## [v2.4.11] - 2026-11-08
 
 ### 紧急修复：v2.4.9 / v2.4.10 的 APK 白屏
