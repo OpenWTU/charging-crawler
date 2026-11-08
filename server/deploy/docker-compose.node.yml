@@ -38,6 +38,11 @@ services:
       ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:-}
       # 会话签名密钥：不设则每次重启随机生成 → 所有管理员会话失效
       ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:-}
+      # 设备注册令牌：配置后，未带 x-register-token 的注册请求**不入库**、
+      # 但对外仍返回成功（兼容不带该头的旧版 App）。不入库的设备上传时因为
+      # 查不到 secret_enc 会 401，所以野生设备写不进数据。
+      # 默认值与 App 内置的 REGISTER_TOKEN 一致（Cloud.java），换值需两边同步。
+      REGISTER_TOKEN: ${REGISTER_TOKEN:-chg-reg-7f3a9c21e5d84b06}
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ${DATA_DIR:-/var/lib/charge-cloud}:/data

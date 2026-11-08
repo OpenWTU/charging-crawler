@@ -475,18 +475,16 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(429).send({ ok: false, error: '注册过于频繁' });
     }
 
-    // 注册令牌（REGISTER_TOKEN 未配置时不校验，兼容已装机的旧版 App）
+    // 注册令牌（REGISTER_TOKEN 未配置时不校验）。
+    //
+    // ⚠️ 令牌不对**不返回 403**，而是记一个标记、后面伪装成功（见 `tokenOk` 的用法）：
+    //   - 旧版 App 不带该头，硬 403 会让用户看到「请更新 App 并反复重试」；
+    //   - 但不入库的设备后续上传会失败：`/api/snapshot` 要按 device_id 从 devices
+    //     取 secret_enc 验签，查不到就 401「签名校验失败（设备未注册或已撤销）」。
+    //   所以「对外成功、实际不入库」既能兼容旧版，也不会让野生设备真的写进数据。
+    let tokenOk = true;
     if (REGISTER_TOKEN) {
-      const got = String(req.headers['x-register-token'] ?? '');
-      if (got !== REGISTER_TOKEN) {
-        return reply.code(403).send({
-          ok: false,
-          code: 'register_token_invalid',
-          // 两种可能：App 版本过旧（不带该头），或服务端 REGISTER_TOKEN 配错。
-          // 不要只说「请更新 App」——配置失误时会把运维问题误导向用户。
-          error: '注册未授权：App 版本过旧或服务端 REGISTER_TOKEN 与服务端不一致',
-        });
-      }
+      tokenOk = String(req.headers['x-register-token'] ?? '') === REGISTER_TOKEN;
     }
 
     if (length <= 0 || length > 4096) {
@@ -543,6 +541,18 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
           .code(409)
           .send({ ok: false, code: 'revoked', error: '设备已被撤销，请联系管理员' });
       }
+    }
+
+    // 未带有效注册令牌：**不入库**，但对外返回和正常注册一模一样的成功响应。
+    // 放在 existed 分支之后，所以「库里已有的设备」重新注册不受令牌影响
+    // （装机量不变的前提下，老用户不会被这条规则挡住）。
+    if (!tokenOk) {
+      markUpload(req, 'register_no_token', { deviceId: did, detail: `ip=${ip} ua=${ua.slice(0, 60)}` });
+      logger.info(
+        { ip, ua: ua.slice(0, 80), device_id: did },
+        '[register] 未带有效注册令牌：不入库，对外返回成功',
+      );
+      return reply.send({ ok: true, device_id: did, pending: false, status: 'approved' });
     }
 
     const stamp = nowStr();
