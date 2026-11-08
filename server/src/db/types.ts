@@ -127,6 +127,8 @@ export interface ControllersTable {
   area_name: Text | null;
   updated_at: Text | null;
   qr_device_no: Text | null;
+  /** S2：首次上报该桩的 device_id（归属），空 = 尚未归属 */
+  owner_device: Text | null;
 }
 
 export interface PortStatesTable {

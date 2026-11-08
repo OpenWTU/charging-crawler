@@ -96,6 +96,8 @@ const CONTROLLER_COLUMNS: ReadonlyArray<readonly [string, string]> = [
   ['area_name', 'TEXT'],
   ['updated_at', 'TEXT'],
   ['qr_device_no', 'TEXT'],
+  // S2：首次上报该桩的 device_id（设备↔桩归属），用于拒绝跨设备改写别人的桩状态
+  ['owner_device', 'TEXT'],
 ];
 
 function tableNames(conn: MigrateConn): Set<string> {

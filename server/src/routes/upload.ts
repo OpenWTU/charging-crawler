@@ -191,8 +191,13 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     }
 
     // 端口校验（坏请求不消耗 nonce）
-    const knownRes = await sql<{ device_hex: string }>`SELECT device_hex FROM controllers`.execute(db);
+    // S2：同时取归属，用于拒绝跨设备改写别人的桩状态
+    const knownRes = await sql<{ device_hex: string; owner_device: string | null }>`
+      SELECT device_hex, owner_device FROM controllers
+    `.execute(db);
     const knownDevices = new Set(knownRes.rows.map((r) => String(r.device_hex)));
+    const ownerMap = new Map<string, string | null>();
+    for (const r of knownRes.rows) ownerMap.set(String(r.device_hex), r.owner_device ?? null);
     let cleanPortsResult;
     try {
       cleanPortsResult = cleanPorts(rawPorts, knownDevices);
@@ -279,7 +284,25 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
             .execute();
         }
 
+        // S2：设备↔桩归属校验
+        // 原来只判 device_hex 存在于 controllers —— 任意自注册设备都能上报别人的桩，
+        // 把满桩刷成「空闲」（实测 /api/area-ports 立刻由 full 变 free=16）。
+        // 规则：首见登记归属；同设备可继续写；跨设备降级为「只记日志、不写 port_states」。
         for (const item of cleanPortsResult) {
+          const owner = ownerMap.get(item.device_hex);
+          if (!owner && deviceId) {
+            await sql`
+              UPDATE controllers SET owner_device = ${deviceId}
+               WHERE device_hex = ${item.device_hex} AND COALESCE(owner_device, '') = ''
+            `.execute(trx);
+            ownerMap.set(item.device_hex, deviceId);
+          } else if (owner && deviceId && owner !== deviceId) {
+            logger.warn(
+              { device_hex: item.device_hex, owner, attacker: deviceId, ip },
+              '[upload] 跨设备改写桩状态已被拒绝',
+            );
+            continue; // 不写 port_states
+          }
           for (const p of item.ports) {
             await trx
               .insertInto('port_states')

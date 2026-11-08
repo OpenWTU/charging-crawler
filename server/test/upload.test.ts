@@ -195,3 +195,102 @@ describe('快照上传', () => {
     expect(res.statusCode).toBe(403); // 重放达阈值后拉黑，全部拒绝
   });
 });
+
+
+describe('S2：设备↔桩归属（跨设备改写被拒）', () => {
+  const pileHex = 'AABBCCDD';
+  const ts = () => String(Math.floor(Date.now() / 1000));
+  const deviceB = 'ff22ee33dd44cc55';
+  const secretB = 'cd'.repeat(32);
+
+  function signed(nonceVal: string, bodyObj: unknown) {
+    const body = JSON.stringify(bodyObj);
+    const sig = deviceSignature(secret, ts(), nonceVal, Buffer.from(body, 'utf8'));
+    return postJson(
+      '/api/snapshot',
+      {
+        'x-charge-timestamp': ts(),
+        'x-charge-nonce': nonceVal,
+        'x-charge-signature': sig,
+        'x-device-id': deviceId,
+      },
+      bodyObj,
+    );
+  }
+  function signedB(nonceVal: string, bodyObj: unknown) {
+    const body = JSON.stringify(bodyObj);
+    const sig = deviceSignature(secretB, ts(), nonceVal, Buffer.from(body, 'utf8'));
+    return postJson(
+      '/api/snapshot',
+      {
+        'x-charge-timestamp': ts(),
+        'x-charge-nonce': nonceVal,
+        'x-charge-signature': sig,
+        'x-device-id': deviceB,
+      },
+      bodyObj,
+    );
+  }
+
+  it('首见登记归属，随后跨设备改写被拒绝', async () => {
+    const db = createDb(dbPath);
+    // 区域必须在 areas 表里，否则 splitValidAreas 会判「未知充电区」
+    await sql`
+      INSERT INTO areas (area_id, name, first_seen, last_seen)
+      VALUES ('a1', '归属测试区', '2026-11-08 09:00:00', '2026-11-08 09:00:00')
+      ON CONFLICT (area_id) DO NOTHING
+    `.execute(db);
+    // 准备一个"别人的"桩
+    await sql`
+      INSERT INTO controllers (device_hex, code, area_id, area_name, updated_at, qr_device_no)
+      VALUES (${pileHex}, 'C1', 'a1', '归属测试区', '2026-11-08 09:00:00', 'Q1')
+      ON CONFLICT (device_hex) DO NOTHING
+    `.execute(db);
+
+    const bodyA = {
+      project: 'test',
+      app_version: '0.0.0',
+      areas: [{ name: '归属测试区', total_port: 2, idle_port: 2, charging_port: 0, fault_port: 0 }],
+      ports: [{ device_hex: pileHex, ports: [{ port: '01', status: '空闲' }, { port: '02', status: '空闲' }] }],
+    };
+    const resA = await signed('aaaa0000bbbb0001', bodyA);
+    expect(resA.statusCode).toBe(200);
+
+    // 设备 A 首次上报 → 登记归属
+    const owner1 = await sql<{ owner_device: string | null }>`
+      SELECT owner_device FROM controllers WHERE device_hex = ${pileHex}
+    `.execute(db);
+    expect(owner1.rows[0]?.owner_device).toBe(deviceId);
+
+    const before = await sql<{ port: string; status: string | null }>`
+      SELECT port, status FROM port_states WHERE device_hex = ${pileHex} ORDER BY port
+    `.execute(db);
+    const beforeStatus = before.rows.map((r) => `${r.port}:${r.status}`).join(',');
+
+    // 注册设备 B（自动审批开着 → 直接 approved）
+    await postJson('/api/device/register', {}, { device_id: deviceB, secret: secretB });
+
+    // 设备 B 想把同一桩刷成"充电中"
+    const bodyB = {
+      project: 'test',
+      app_version: '0.0.0',
+      areas: [{ name: '归属测试区', total_port: 2, idle_port: 0, charging_port: 2, fault_port: 0 }],
+      ports: [{ device_hex: pileHex, ports: [{ port: '01', status: '充电中' }, { port: '02', status: '充电中' }] }],
+    };
+    const resB = await signedB('cccc0000dddd0002', bodyB);
+    // 快照本身可以收（区域数据），但端口状态不能被改写
+    expect(resB.statusCode).toBe(200);
+
+    const after = await sql<{ port: string; status: string | null }>`
+      SELECT port, status FROM port_states WHERE device_hex = ${pileHex} ORDER BY port
+    `.execute(db);
+    const afterStatus = after.rows.map((r) => `${r.port}:${r.status}`).join(',');
+    expect(afterStatus).toBe(beforeStatus); // 关键断言：没被跨设备改写
+
+    // 归属仍然是 A
+    const owner2 = await sql<{ owner_device: string | null }>`
+      SELECT owner_device FROM controllers WHERE device_hex = ${pileHex}
+    `.execute(db);
+    expect(owner2.rows[0]?.owner_device).toBe(deviceId);
+  });
+});
