@@ -6,6 +6,38 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.4.11] - 2026-11-08
+
+### 紧急修复：v2.4.9 / v2.4.10 的 APK 白屏
+**根因**：v2.4.9 把 `vite base` 从 `'./'` 改成 `'/'`（为了修服务器的 `/admin/login` 子路径）。
+产物里的引用从 `./assets/x` 变成 `/assets/x`，而 App 的 `AppWebShell.serveAsset` 是：
+
+```java
+WebView 入口 = https://appassets.androidplatform.net/www/app.html
+APK 里的资源 = assets/www/assets/x
+serveAsset: getAssets().open(path.substring(1))
+  base './' → /www/assets/x → open("www/assets/x")  ✓
+  base '/'  → /assets/x     → open("assets/x")      ✗ 不存在 → 子资源全 404 → 白屏
+```
+
+主文档（`/www/app.html`）能加载，所以看到的是"页面骨架在、但渲染不出来"。
+
+**修复**：`serveAsset` 先按原路径找，找不到再补 `www/` 前缀 —— 两种 `base` 产物都能命中：
+
+```java
+String rel = path.substring(1);
+try { in = getAssets().open(rel); }
+catch (IOException first) {
+    if (rel.startsWith("www/")) throw first;
+    in = getAssets().open("www/" + rel);
+}
+```
+
+顺带把缓存头判断也改成同时认 `/assets/` 与 `/www/assets/`。
+
+**验证**：用 Node 复刻 `serveAsset` 的路由逻辑 + CDP 加载 `/www/app.html`：
+8 个子资源**全部走「回退 www/」命中**（`/assets/app-B5lRZZ6a.js` 等），`#app` 渲染 2592 字节，MIME 全部正确。
+
 ## [v2.4.10] - 2026-11-08
 
 ### 修复：带尾斜杠的页面路径返回 JSON 404

@@ -101,10 +101,29 @@ jobs:
           python3 - "$VERSION_CODE" "$VERSION_NAME" "$SHA" "$SIZE" <<'PY'
           import json, subprocess, sys
           code, name, sha, size = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-          # 更新说明：取本 tag 的提交信息（去掉空行）
+          # 更新说明：只取提交信息里「有价值的短句」，别把整篇 commit body 塞进去
+          # （之前把 "## 症状 / 根因 / ```java ..." 全部当 changelog，App 弹窗里一屏都是代码块）
           try:
-              raw = subprocess.check_output(["git", "log", "-1", "--format=%B"], text=True)
-              changelog = [l.strip() for l in raw.strip().split("\n") if l.strip()]
+              subject = subprocess.check_output(
+                  ["git", "log", "-1", "--format=%s"], text=True, encoding="utf-8"
+              ).strip()
+              body = subprocess.check_output(
+                  ["git", "log", "-1", "--format=%b"], text=True, encoding="utf-8"
+              ).strip()
+              lines = []
+              if subject:
+                  lines.append(subject)
+              # 正文只挑以 "- " 开头的要点行，最多 5 条，且跳过代码块/标题/表格式行
+              for raw in body.split("\n"):
+                  s = raw.strip()
+                  if not s.startswith("- ") or len(s) < 4:
+                      continue
+                  if "```" in s or s.startswith("- #"):
+                      continue
+                  lines.append(s[2:].strip()[:80])
+                  if len(lines) >= 6:
+                      break
+              changelog = lines
           except Exception:
               changelog = []
           d = {
@@ -113,7 +132,7 @@ jobs:
               "apkPath": "/download/app-debug.apk?v=" + code,
               "sizeText": size,
               "sha256": sha,
-              "releasedAt": subprocess.check_output(["date", "+%Y-%m-%d %H:%M"]).decode().strip(),
+              "releasedAt": subprocess.check_output(["date", "+%Y-%m-%d %H:%M"], text=True, encoding="utf-8").strip(),
               "changelog": changelog,
           }
           open("version.json", "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False, indent=2))

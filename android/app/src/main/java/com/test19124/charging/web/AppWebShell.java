@@ -208,7 +208,19 @@ public final class AppWebShell {
             return null;
         }
         try {
-            java.io.InputStream in = host.activity().getAssets().open(path.substring(1));
+            // ★ 兼容两种资源引用形态：
+            //   base './' → /www/assets/x → assets/www/assets/x  （旧构建）
+            //   base '/'  → /assets/x     → assets/assets/x      （不存在，需要补 www/ 前缀）
+            // v2.4.9 把 vite base 改成绝对路径后，WebView 拿到的就是 /assets/x，
+            // 而 APK 里实际在 assets/www/assets/，于是主文档能加载、子资源全 404 → 白屏。
+            String rel = path.substring(1);
+            java.io.InputStream in;
+            try {
+                in = host.activity().getAssets().open(rel);
+            } catch (java.io.IOException first) {
+                if (rel.startsWith("www/")) throw first;
+                in = host.activity().getAssets().open("www/" + rel);
+            }
             // ★ 主文档必须是 text/html：第 8 轮补 MIME 映射时把这条漏了，
             // v2.4.7 的 APK 因此把 app.html / admin.html 当 application/octet-stream，
             // WebView 不渲染 → 整个 App 与 App 内管理后台白屏。
@@ -232,7 +244,7 @@ public final class AppWebShell {
                 // 入口页不缓存：避免更新后 app.html 仍引用已被删除的旧 hash 资源
                 headers.put("Cache-Control", "no-cache, no-store, must-revalidate");
                 headers.put("Pragma", "no-cache");
-            } else if (path.startsWith("/assets/")) {
+            } else if (path.startsWith("/assets/") || path.startsWith("/www/assets/")) {
                 // hashed 资源可长期缓存（文件名随内容变化）
                 headers.put("Cache-Control", "public, max-age=31536000, immutable");
             } else {
