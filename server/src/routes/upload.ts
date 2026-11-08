@@ -216,6 +216,30 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(409).send({ ok: false, error: 'nonce 已使用（疑似重放）' });
     }
 
+    // M1：摘要去重（必须在 nonce 落库之后：nonce 是安全层，重放要先被 409 拦下）。
+    // App 的 pending 补传 / 网络重试会重复上传同一份 body（只换 nonce），
+    // 原来会落两条快照 → /api/now 的 delta、analytics 样本数、后台卡片全部虚高。
+    // 与 storeSnapshot / P2P 用同一个 snapshotDigest + 30 分钟窗口。
+    const digest = snapshotDigest(payload as unknown as Record<string, unknown>);
+    const dupCutoff = nowStr(new Date(Date.now() - 30 * 60 * 1000));
+    const dupRes = await sql<{ id: number }>`
+      SELECT id FROM snapshots
+       WHERE body_sha256 = ${digest} AND received_at >= ${dupCutoff}
+       LIMIT 1
+    `.execute(db);
+    if (dupRes.rows[0]) {
+      markUpload(req, 'duplicate', {
+        deviceId: deviceId ?? null,
+        detail: `dup of snapshot ${dupRes.rows[0].id}`,
+      });
+      return reply.send({
+        ok: true,
+        duplicate: true,
+        snapshot_id: dupRes.rows[0].id,
+        areas: payload.areas.length,
+      });
+    }
+
     // 单事务落库
     let snapshotId = 0;
     try {

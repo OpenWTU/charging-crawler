@@ -12,6 +12,19 @@ set -uo pipefail
 
 IMAGE="ghcr.io/openwtu/charging-crawler"
 TAG="${1:-latest}"
+
+# M4：管理后台的「锁版本 / 回滚到指定 tag」只写 /data/update.request，这里原来从不读它
+# —— 后台操作是空操作，宿主机每晚仍跟 latest（运维会以为锁了版本）。
+# 只有在没显式传参（TAG 仍是 latest）时才消费请求文件，消费后删除避免一直生效。
+REQUEST_FILE="${DATA_DIR:-/var/lib/charge-cloud}/update.request"
+if [ "$TAG" = "latest" ] && [ -f "$REQUEST_FILE" ]; then
+  REQ_TAG="$(head -n1 "$REQUEST_FILE" | tr -d '[:space:]')"
+  if [ -n "$REQ_TAG" ]; then
+    echo "[update-node] 检测到后台请求的版本：$REQ_TAG（已消费并删除请求文件）"
+    TAG="$REQ_TAG"
+    rm -f "$REQUEST_FILE"
+  fi
+fi
 CONTAINER="charge-node"
 COMPOSE_DIR="/opt/charge-node"
 LOG="/var/log/charge-update.log"

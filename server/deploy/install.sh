@@ -8,7 +8,8 @@
 # 可选环境变量：
 #   NODE_NAME   节点名称（默认取主机名）
 #   NODE_URL    节点 HTTP 地址（默认空，状态页不可点切换）
-#   NODE_P2P_ADDR 节点公网 P2P 地址（如 /ip4/1.2.3.4/tcp/4001）
+#   TRUST_PROXY=${TRUST_PROXY:-false}
+NODE_P2P_ADDR 节点公网 P2P 地址（如 /ip4/1.2.3.4/tcp/4001）
 #   DATA_DIR    数据目录（默认 /var/lib/charge-cloud）
 #   P2P_ENABLED 是否启用 P2P（默认 true）
 
