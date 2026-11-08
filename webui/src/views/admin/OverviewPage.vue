@@ -48,8 +48,9 @@ v-for="(p, i) in points" :key="'b' + i" :x="barX(i)" :y="barY(p.snapshots)"
             <polyline :points="linePoints" class="line" />
           </svg>
           <div class="axis">
-            <span>{{ points[0]?.t?.slice(11) || '' }}</span>
-            <span>{{ points[points.length - 1]?.t?.slice(11) || '' }}</span>
+            <!-- L5：后端 t 形如 "2026-11-08 06"，只取小时会跨天混淆 -->
+            <span>{{ axisLabel(points[0]?.t) }}</span>
+            <span>{{ axisLabel(points[points.length - 1]?.t) }}</span>
           </div>
         </div>
         <p v-else class="muted empty">还没有足够的快照</p>
@@ -114,7 +115,7 @@ v-for="(p, i) in points" :key="'b' + i" :x="barX(i)" :y="barY(p.snapshots)"
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { apiGet } from '../../api/adminApi.js';
 
 const props = defineProps({ data: { type: Object, default: null }, loading: Boolean });
@@ -150,6 +151,12 @@ const linePoints = computed(() => {
     })
     .join(' ');
 });
+
+function axisLabel(t) {
+  if (!t) return '';
+  const s = String(t);
+  return s.length >= 13 ? `${s.slice(5, 10)} ${s.slice(11, 13)}:00` : s;
+}
 
 function fmt(v) {
   if (v === null || v === undefined) return '—';
@@ -207,9 +214,10 @@ async function loadExtras() {
   if (e.status === 'fulfilled') events.value = e.value.items || [];
 }
 
-onMounted(loadExtras);
-// 概览数据刷新时不重复拉图表（30s 一次足够）
-watch(() => props.data, (v, old) => { if (v && !old) void loadExtras(); });
+// M1：原来 onMounted + watch 会让首屏 3 个接口各请求两次；
+// M2：watch 只在 null→有值 时跑，所以图表进入后再也不刷新。
+// 改成 watch(props.data) 每次都刷（Shell 每 60s 会更新 data）。
+watch(() => props.data, (v) => { if (v) void loadExtras(); }, { immediate: true });
 </script>
 
 <style scoped>

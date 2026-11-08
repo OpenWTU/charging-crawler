@@ -57,7 +57,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRole } from './useRole.js';
 import { apiGet, apiPost } from '../../api/adminApi.js';
 
@@ -68,6 +68,7 @@ const timers = ref([]);
 const error = ref('');
 const busy = ref(false);
 const { canWrite } = useRole();
+let refreshTimer = null;
 
 async function load() {
   error.value = '';
@@ -87,7 +88,9 @@ async function run() {
   try {
     await apiPost('/admin/api/jobs/worker/run', {});
     window.alert('已触发，约 10–30 秒后刷新可看结果');
-    setTimeout(load, 15000);
+    // M26：定时器要能清（否则切走后仍在已卸载组件上发请求）
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => { void load(); }, 15000);
   } catch (e) {
     error.value = e.message || '触发失败';
   } finally {
@@ -107,4 +110,5 @@ async function purge() {
 }
 
 onMounted(load);
+onBeforeUnmount(() => { if (refreshTimer) clearTimeout(refreshTimer); });
 </script>

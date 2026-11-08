@@ -1,7 +1,8 @@
 <template>
   <div class="live-page">
+    <p v-if="error" class="a-err">{{ error }}</p>
     <div class="toolbar">
-      <input v-model.trim="q" class="search" placeholder="搜索区域" @input="load" />
+      <input v-model.trim="q" class="search" placeholder="搜索区域" @input="loadDebounced" />
       <label class="chk"><input v-model="onlyFree" type="checkbox" @change="load" /> 只看有空位</label>
       <select v-model="sort" class="sel" @change="load">
         <option value="idle">按空位数</option>
@@ -77,6 +78,7 @@ const sort = ref('idle');
 const areas = ref([]);
 const snapshot = ref(null);
 const drawer = ref('');
+const error = ref('');
 const drawerPorts = ref([]);
 
 const snapText = computed(() => (snapshot.value
@@ -93,17 +95,31 @@ function tone(a) {
   return 'var(--danger, #dc2626)';
 }
 
+let loadSeq = 0;
+let debounceTimer = null;
+
+/** M3：搜索防抖 300ms + 请求序号，避免慢响应覆盖新结果 */
+function loadDebounced() {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => { void load(); }, 300);
+}
+
 async function load() {
+  const seq = ++loadSeq;
   const params = new URLSearchParams();
   if (q.value) params.set('q', q.value);
   if (onlyFree.value) params.set('only_free', '1');
   params.set('sort', sort.value);
   try {
     const d = await apiGet(`/admin/api/live?${params.toString()}`);
+    if (seq !== loadSeq) return; // 过期响应丢弃
     areas.value = d.areas || [];
     snapshot.value = d.snapshot || null;
-  } catch {
+    error.value = '';
+  } catch (e) {
+    if (seq !== loadSeq) return;
     areas.value = [];
+    error.value = e.message || '加载失败';
   }
 }
 
@@ -112,9 +128,12 @@ async function openArea(name) {
   drawerPorts.value = [];
   try {
     const d = await apiGet(`/admin/api/live/area?name=${encodeURIComponent(name)}`);
+    // M4：连点 A→B 时 A 的慢响应不能覆盖 B
+    if (drawer.value !== name) return;
     drawerPorts.value = d.ports || [];
-  } catch {
-    /* 抽屉里显示空 */
+  } catch (e) {
+    if (drawer.value !== name) return;
+    error.value = e.message || '端口明细加载失败';
   }
 }
 

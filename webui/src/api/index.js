@@ -26,4 +26,3 @@ export {
 } from './native.js';
 
 // 管理后台（/admin/api/*）
-export { request as adminRequest, postJSON as adminPost, exportCsv, logout } from './admin.js';

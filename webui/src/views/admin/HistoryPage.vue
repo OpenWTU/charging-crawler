@@ -41,14 +41,17 @@ v-for="t in tabs" :key="t.key" class="a-btn sm" :class="{ primary: tab === t.key
             <td class="a-mono a-small">{{ s.sha8 }}</td>
             <td>
               <button class="a-btn sm" @click="viewSnap(s.id)">详情</button>
-              <button class="a-btn sm danger" @click="delSnap(s.id)">删除</button>
+              <button v-if="canWrite" class="a-btn sm danger" @click="delSnap(s.id)">删除</button>
             </td>
           </tr>
           <tr v-if="!snaps.length"><td colspan="7" class="a-empty">暂无快照</td></tr>
         </tbody>
       </table>
       <div class="a-pad">
-        <button class="a-btn sm" :disabled="!nextCursor" @click="loadMore">加载更多</button>
+        <button v-if="!reachedEnd" class="a-btn sm" :disabled="!nextCursor || loadingMore" @click="loadMore">
+          {{ loadingMore ? '加载中…' : '加载更多' }}
+        </button>
+        <span v-else class="a-small a-muted">已到底</span>
       </div>
     </section>
 
@@ -120,6 +123,7 @@ v-for="t in tabs" :key="t.key" class="a-btn sm" :class="{ primary: tab === t.key
 
 <script setup>
 import { onMounted, ref } from 'vue';
+import { useRole } from './useRole.js';
 import { apiDelete, apiGet } from '../../api/adminApi.js';
 
 const tabs = [
@@ -159,14 +163,30 @@ async function loadSnaps() {
   }
 }
 
+const loadingMore = ref(false);
+const { canWrite } = useRole();
+const reachedEnd = ref(false);
+
 async function loadMore() {
-  if (!nextCursor.value) return;
+  if (!nextCursor.value || loadingMore.value) return; // M6：忙锁，连点不再发重复请求
+  loadingMore.value = true;
   try {
-    const d = await apiGet(`/admin/api/history/snapshots?cursor=${nextCursor.value}&size=50`);
-    snaps.value = [...snaps.value, ...(d.items || [])];
+    // M5：必须带上筛选条件，否则「按 App 筛选」后翻页会混进 worker 数据
+    const p = new URLSearchParams();
+    p.set('cursor', String(nextCursor.value));
+    p.set('size', '50');
+    if (source.value) p.set('source', source.value);
+    if (deviceFilter.value) p.set('device_id', deviceFilter.value);
+    const d = await apiGet(`/admin/api/history/snapshots?${p.toString()}`);
+    const seen = new Set(snaps.value.map((s) => s.id));
+    const fresh = (d.items || []).filter((s) => !seen.has(s.id)); // M6：按 id 去重
+    snaps.value = [...snaps.value, ...fresh];
     nextCursor.value = d.next_cursor;
+    if (!d.next_cursor || !fresh.length) reachedEnd.value = true; // M7：到底了
   } catch (e) {
     error.value = e.message || '加载失败';
+  } finally {
+    loadingMore.value = false;
   }
 }
 

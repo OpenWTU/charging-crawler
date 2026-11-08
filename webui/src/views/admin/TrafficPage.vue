@@ -88,15 +88,20 @@ const statusBars = computed(() => {
 async function load() {
   error.value = '';
   try {
-    const [s, e, b] = await Promise.all([
+    // M28：三路互不依赖，用 allSettled —— 原来任一路失败整页显示 0，被误读为"没有流量"
+    const [s, e, b] = await Promise.allSettled([
       apiGet('/admin/api/traffic/summary?range=24'),
       apiGet('/admin/api/traffic/endpoints?range=24'),
       apiGet('/admin/api/traffic/banlist'),
     ]);
-    summary.value = s;
-    endpoints.value = e.endpoints || [];
-    banlist.value = b;
-    bans.value = b.items || [];
+    if (s.status === 'fulfilled') summary.value = s.value;
+    if (e.status === 'fulfilled') endpoints.value = e.value.endpoints || [];
+    if (b.status === 'fulfilled') {
+      banlist.value = b.value;
+      bans.value = b.value.items || [];
+    }
+    const failed = [s, e, b].filter((x) => x.status === 'rejected').length;
+    if (failed) error.value = `${failed} 项数据加载失败，其余已显示`;
   } catch (err) {
     error.value = err.message || '加载失败';
   }

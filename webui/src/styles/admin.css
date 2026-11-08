@@ -14,6 +14,10 @@ body {
 .admin { max-width: 1040px; margin: 0 auto; padding: var(--sp-4) var(--sp-4) 44px; }
 
 .topbar {
+  /* L1：新页面复用了 .topbar，这里不能再带 radius/阴影/浅色字（会渗进 AdminShell 顶栏） */
+  border-radius: 0;
+  color: var(--text);
+  box-shadow: none;
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   flex-wrap: wrap;
   background: var(--brand-gradient);
@@ -28,7 +32,6 @@ body {
 .brand-text h1 { font-size: var(--fs-20); margin: 0; letter-spacing: .3px; }
 .brand-text p { margin: 3px 0 0; font-size: var(--fs-12); color: var(--brand-sub); }
 .actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.live { font-size: var(--fs-12); color: var(--brand-sub); font-variant-numeric: tabular-nums; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -86,7 +89,7 @@ body {
 
 .panel {
   background: var(--card); border-radius: var(--r-md); padding: var(--sp-4) var(--sp-4) 18px;
-  border: 1px solid var(--border); box-shadow: var(--shadow-card);
+   box-shadow: var(--shadow-card);
 }
 .panel-head {
   display: flex; align-items: flex-start; justify-content: space-between;
@@ -96,7 +99,7 @@ body {
 .panel-head h2 { font-size: var(--fs-16); margin: 0; font-weight: var(--fw-semibold); color: var(--text); }
 .panel-head p { font-size: var(--fs-12); color: var(--text-3); margin: 4px 0 0; }
 .muted { color: var(--text-3); font-size: var(--fs-12); }
-.empty { color: var(--text-3); text-align: center; padding: 34px 0; font-size: var(--fs-13); }
+.empty { color: var(--text-3); text-align: center; padding: 12px 0; font-size: var(--fs-13); }
 .alert {
   background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger-fg);
   border-radius: var(--r-sm); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-12);

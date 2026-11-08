@@ -26,8 +26,8 @@ v-for="a in areas" :key="a.area_id" :class="{ active: currentId === a.area_id }"
         <div class="a-toolbar">
           <h2>{{ current.name }}</h2>
           <span class="a-spacer" />
-          <button class="a-btn sm" @click="editCoords">改坐标</button>
-          <button class="a-btn sm danger" @click="deleteArea">删除区域</button>
+          <button v-if="canWrite" class="a-btn sm" @click="editCoords">改坐标</button>
+          <button v-if="canWrite" class="a-btn sm danger" @click="deleteArea">删除区域</button>
         </div>
         <dl class="a-kv" style="margin-top:12px">
           <div><dt>坐标</dt><dd>{{ current.lat ?? '—' }}, {{ current.lng ?? '—' }}</dd></div>
@@ -54,7 +54,7 @@ v-for="p in ports" :key="p.device_hex + ':' + p.port" class="port"
               <td class="a-mono">{{ d.device_hex }}</td>
               <td class="a-mono">{{ d.qr_device_no || d.code || '—' }}</td>
               <td class="a-small">{{ d.updated_at || '—' }}</td>
-              <td><button class="a-btn sm" @click="syncDevice(d.device_hex)">同步端口</button></td>
+              <td><button v-if="canWrite" class="a-btn sm" @click="syncDevice(d.device_hex)">同步端口</button></td>
             </tr>
             <tr v-if="!devices.length"><td colspan="4" class="a-empty">该区域暂无桩</td></tr>
           </tbody>
@@ -72,7 +72,7 @@ v-for="p in ports" :key="p.device_hex + ':' + p.port" class="port"
               <td>{{ p.b.name }}</td>
               <td class="num">{{ Math.round(p.similarity * 100) }}%</td>
               <td class="num">{{ p.distance_m === null ? '—' : Math.round(p.distance_m) + ' m' }}</td>
-              <td><button class="a-btn sm" @click="merge(p.a, p.b)">合并（B 并入 A）</button></td>
+              <td><button v-if="canWrite" class="a-btn sm" @click="merge(p.a, p.b)">合并（B 并入 A）</button></td>
             </tr>
           </tbody>
         </table>
@@ -83,6 +83,7 @@ v-for="p in ports" :key="p.device_hex + ':' + p.port" class="port"
 
 <script setup>
 import { onMounted, ref } from 'vue';
+import { useRole } from './useRole.js';
 import { apiDelete, apiGet, apiPost } from '../../api/adminApi.js';
 
 const areas = ref([]);
@@ -93,6 +94,7 @@ const ports = ref([]);
 const dups = ref([]);
 const q = ref('');
 const error = ref('');
+const { canWrite } = useRole();
 
 async function loadAreas() {
   try {
@@ -127,15 +129,26 @@ async function syncDevice(hex) {
 }
 
 async function editCoords() {
-  const lat = window.prompt('纬度（-90 ~ 90）', String(current.value?.lat ?? ''));
-  if (lat === null) return;
-  const lng = window.prompt('经度（-180 ~ 180）', String(current.value?.lng ?? ''));
-  if (lng === null) return;
+  const latRaw = window.prompt('纬度（-90 ~ 90）', String(current.value?.lat ?? ''));
+  if (latRaw === null) return;
+  const lngRaw = window.prompt('经度（-180 ~ 180）', String(current.value?.lng ?? ''));
+  if (lngRaw === null) return;
+  // M18：Number('')=0、Number('abc')=NaN —— 原来空输入会被静默写成 (0,0)
+  const lat = Number(latRaw.trim());
+  const lng = Number(lngRaw.trim());
+  if (!latRaw.trim() || !lngRaw.trim() || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    error.value = '经纬度必须是数字';
+    return;
+  }
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    error.value = '纬度需在 ±90、经度需在 ±180 内';
+    return;
+  }
   try {
     await apiPost('/admin/api/units/area', {
       area_id: currentId.value,
-      lat: Number(lat),
-      lng: Number(lng),
+      lat,
+      lng,
     });
     await openArea(currentId.value);
   } catch (e) {

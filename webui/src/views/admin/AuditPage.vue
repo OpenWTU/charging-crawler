@@ -34,10 +34,30 @@ v-for="t in tabs" :key="t.key" class="a-btn sm" :class="{ primary: tab === t.key
     </section>
 
     <section v-else class="a-panel">
-      <div class="a-pad a-small a-muted">
-        上传审计表（upload_audit）目前还没有埋点写入，所以这里是空的。
-        需要在 /api/snapshot 里补记录（P2 待办），补完即可看到每条上传的 IP/UA/大小/结果。
+      <div class="a-toolbar a-pad">
+        <select v-model="upResult" class="a-select" @change="loadUpload">
+          <option value="">全部结果</option>
+          <option value="ok">成功</option>
+          <option value="fail">失败</option>
+        </select>
+        <button class="a-btn sm" @click="loadUpload">刷新</button>
+        <span class="a-spacer" />
+        <span class="a-small a-muted">共 {{ upRows.length }} 条</span>
       </div>
+      <table class="a-tbl">
+        <thead><tr><th>时间</th><th>IP</th><th class="num">大小</th><th>结果</th><th>原因</th><th>设备</th></tr></thead>
+        <tbody>
+          <tr v-for="r in upRows" :key="r.id">
+            <td class="a-small">{{ r.ts }}</td>
+            <td class="a-mono a-small">{{ r.ip || '—' }}</td>
+            <td class="num">{{ r.size ? (r.size / 1024).toFixed(1) + ' KB' : '—' }}</td>
+            <td><span class="a-tag" :class="r.result === 'ok' ? 'ok' : 'err'">{{ r.result || '—' }}</span></td>
+            <td class="a-small a-muted">{{ r.detail?.reason || '—' }}</td>
+            <td class="a-mono a-small">{{ r.detail?.device_id ? r.detail.device_id.slice(0, 10) : '—' }}</td>
+          </tr>
+          <tr v-if="!upRows.length"><td colspan="6" class="a-empty">还没有上传记录</td></tr>
+        </tbody>
+      </table>
     </section>
   </div>
 </template>

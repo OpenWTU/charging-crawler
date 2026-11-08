@@ -15,7 +15,7 @@
         <tbody>
           <tr v-for="b in items" :key="b.name">
             <td class="a-mono a-small">{{ b.name }}</td>
-            <td class="num">{{ (b.size / 1024 / 1024).toFixed(2) }} MB</td>
+            <td class="num">{{ (Number(b.size) || 0) > 0 ? ((b.size / 1024 / 1024).toFixed(2) + ' MB') : '—' }}</td>
             <td>
               <a class="a-btn sm" :href="`/admin/api/backup/download?name=${encodeURIComponent(b.name)}`">下载</a>
               <button class="a-btn sm danger" @click="restore(b.name)">恢复</button>

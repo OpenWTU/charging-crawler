@@ -16,7 +16,7 @@
         <div>
           <dt>采纳非白名单数据</dt>
           <dd>
-            <select class="a-select" :value="policy.trust_non_whitelist === null ? 'null' : String(policy.trust_non_whitelist)" @change="setTrust($event.target.value)">
+            <select v-if="isSuper" class="a-select" :value="policy.trust_non_whitelist === null ? 'null' : String(policy.trust_non_whitelist)" @change="setTrust($event.target.value)">
               <option value="null">跟随环境变量（当前 {{ policy.trust_non_whitelist_effective ? '接受' : '丢弃' }}）</option>
               <option value="true">接受</option>
               <option value="false">丢弃</option>
@@ -55,7 +55,7 @@
             <td class="num">{{ p.stats?.snapshots ?? 0 }}</td>
             <td>
               <button class="a-btn sm" @click="viewValidation(p.peer_id)">互校</button>
-              <button class="a-btn sm" @click="disconnect(p.peer_id)">断开</button>
+              <button v-if="canWrite" class="a-btn sm" @click="disconnect(p.peer_id)">断开</button>
             </td>
           </tr>
           <tr v-if="!peers.length"><td colspan="8" class="a-empty">暂无其他节点</td></tr>
@@ -75,7 +75,7 @@
         <input v-model.trim="form.addr" class="a-input" placeholder="/ip4/x.x.x.x/tcp/4001" />
         <input v-model.trim="form.url" class="a-input" placeholder="https://..." />
         <input v-model.trim="form.name" class="a-input" placeholder="名称" />
-        <button class="a-btn sm primary" @click="addPeer">加入白名单</button>
+        <button v-if="canWrite" class="a-btn sm primary" @click="addPeer">加入白名单</button>
       </div>
       <table class="a-tbl">
         <thead><tr><th>来源</th><th>peerId / 名称</th><th>地址</th><th>操作</th></tr></thead>
@@ -93,7 +93,7 @@
               <span v-if="p.name" class="a-muted"> · {{ p.name }}</span>
             </td>
             <td class="a-mono a-small">{{ p.addr || p.url || '—' }}</td>
-            <td><button class="a-btn sm danger" @click="removePeer(p.peerId)">删除</button></td>
+            <td><button v-if="canWrite" class="a-btn sm danger" @click="removePeer(p.peerId)">删除</button></td>
           </tr>
           <tr v-if="!whitelist.github.length && !whitelist.local.length">
             <td colspan="4" class="a-empty">白名单为空</td>
@@ -135,6 +135,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
+import { useRole } from './useRole.js';
 import { apiDelete, apiGet, apiFetch, apiPost } from '../../api/adminApi.js';
 
 const error = ref('');
@@ -143,6 +144,7 @@ const peers = ref([]);
 const whitelist = ref({ github: [], local: [] });
 const validation = ref(null);
 const form = reactive({ peerId: '', addr: '', url: '', name: '' });
+const { canWrite, isSuper } = useRole();
 
 async function load() {
   error.value = '';

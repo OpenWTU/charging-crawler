@@ -1,7 +1,8 @@
 <template>
   <div class="sys">
+    <p v-if="error" class="a-err">{{ error }}</p>
     <section class="panel">
-      <div class="panel-head"><h2>运行信息</h2></div>
+      <div class="panel-head"><h2>运行信息</h2><button class="a-btn sm" @click="load">刷新</button></div>
       <dl class="kv">
         <div><dt>服务版本</dt><dd class="mono">{{ rt.version || '—' }}</dd></div>
         <div><dt>运行时长</dt><dd>{{ uptime }}</dd></div>
@@ -52,6 +53,7 @@ import { apiGet } from '../../api/adminApi.js';
 const rt = ref({});
 const env = ref([]);
 const tables = ref([]);
+const error = ref('');
 
 const uptime = computed(() => {
   const s = Number(rt.value.uptime_sec) || 0;
@@ -78,8 +80,8 @@ async function load() {
     rt.value = d.runtime || {};
     env.value = d.env || [];
     tables.value = d.tables || [];
-  } catch {
-    /* 保留空态 */
+  } catch (e) {
+    error.value = e.message || '加载失败';
   }
 }
 
