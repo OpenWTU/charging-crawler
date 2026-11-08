@@ -156,6 +156,16 @@ export async function registerAdminOpsRoutes(scope: FastifyInstance): Promise<vo
     if (!addr.startsWith('/ip4/') && !addr.startsWith('/dns')) {
       return reply.code(400).send({ ok: false, error: '地址需为 /ip4/... 或 /dns... 形式' });
     }
+    // L11：只允许拨"已登记节点"的地址，避免变成内网探测工具
+    const known = new Set<string>();
+    for (const p of (await readSettings()).p2p_extra_peers) if (p.addr) known.add(p.addr);
+    for (const p of p2pPeers()) if (p.addr) known.add(p.addr);
+    if (!known.has(addr)) {
+      return reply.code(400).send({
+        ok: false,
+        error: '只允许拨已登记的节点地址（先加入白名单）',
+      });
+    }
     try {
       await handle.dial(addr);
       await audit({ username: admin.username, action: 'nodes_dial', target: addr, ip: req.ip });

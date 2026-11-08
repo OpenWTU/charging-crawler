@@ -1,7 +1,8 @@
 /**
  * 管理端：历史分析 + CSV 导出 + 数据质量体检。
  *
- * 分页一律用游标（`id < cursor`），不用 OFFSET；导出流式写，避免大表 OOM。
+ * 分页一律用游标（`id < cursor`），不用 OFFSET。
+ * 导出：单次上限 2 万行（20 万行实测 313MB RSS，容器会 OOM）；更大范围请用数据浏览器。
  */
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
@@ -213,7 +214,8 @@ export async function registerAdminHistoryRoutes(scope: FastifyInstance): Promis
     // 全程参数化：表名走白名单分支，时间条件走绑定参数（绝不拼字符串）
     const from = String(q.from ?? '');
     const to = String(q.to ?? '');
-    const LIMIT = 200000;
+    // M19：20 万行实测 313MB RSS（容器会 OOM）；先降到 2 万，需要更多请用数据浏览器分批
+    const LIMIT = 20000;
     let rows: Array<Record<string, unknown>> = [];
     if (table === 'snapshots') {
       rows = (await sql<Record<string, unknown>>`
@@ -376,7 +378,7 @@ export async function registerAdminHistoryRoutes(scope: FastifyInstance): Promis
       checks.push({
         code: 'too_dense',
         level: 'blue',
-        title: '某小时快照过密（>30 条）',
+        title: '近 24h 某小时快照过密（>30 条）',
         count: res.rows.length,
         samples: res.rows,
       });
@@ -424,9 +426,13 @@ export async function registerAdminHistoryRoutes(scope: FastifyInstance): Promis
       return { ok: true, deleted: Number(r.numAffectedRows ?? 0) };
     }
     if (kind === 'conservation_fail') {
+      // M23：只删"坏的那几行"，不能按 snapshot_id 把整条快照的好数据一起删
       const ids = idList(body.ids);
-      if (!ids.length) return reply.code(400).send({ ok: false, error: '需要指定要删除的采样 snapshot_id' });
-      const r = await sql`DELETE FROM area_samples WHERE snapshot_id IN (${sql.join(ids)})`.execute(db);
+      const r = await sql`
+        DELETE FROM area_samples
+         WHERE (idle + charging + fault) <> total
+           ${ids.length ? sql`AND snapshot_id IN (${sql.join(ids)})` : sql``}
+      `.execute(db);
       await audit({ username: admin.username, action: 'quality_fix', target: kind, ip: req.ip, detail: { rows: Number(r.numAffectedRows ?? 0) } });
       return { ok: true, deleted: Number(r.numAffectedRows ?? 0) };
     }

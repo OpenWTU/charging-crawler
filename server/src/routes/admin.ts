@@ -29,7 +29,10 @@ import {
   SESSION_TTL_SEC,
   signSession,
   verifyPassword,
+  verifyPasswordConstantTime,
   verifySession,
+  revokeSession,
+  isSessionRevoked,
   type AdminRole,
 } from '../domain/adminauth.js';
 import {
@@ -125,6 +128,8 @@ async function sendPage(reply: FastifyReply, file: string): Promise<unknown> {
 
 async function loadAdmin(req: FastifyRequest): Promise<AdminCtx | null> {
   const token = (req.cookies as Record<string, string> | undefined)?.[COOKIE_SESSION];
+  // M13：登出后立即失效（原来只清 cookie，旧 token 8 小时内仍可用）
+  if (isSessionRevoked(token)) return null;
   const session = verifySession(token);
   if (!session) return null;
   const res = await sql<{
@@ -189,16 +194,30 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
 
   /* ===== 公开：登录 / 登出 ===== */
   app.post('/admin/login', async (req, reply) => {
+    // L18：登录也要挡一下跨站表单（login-CSRF 能把受害者登到攻击者账号）
+    const origin = req.headers.origin;
+    if (origin) {
+      try {
+        const o = new URL(origin);
+        const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '');
+        if (host && !host.startsWith(o.host)) {
+          return reply.code(403).send({ ok: false, error: '跨站请求被拒绝' });
+        }
+      } catch {
+        return reply.code(403).send({ ok: false, error: 'Origin 非法' });
+      }
+    }
     const ip = req.ip;
-    const verdict = loginAllowed(ip);
+    const body = readBody<{ username?: unknown; password?: unknown }>(req);
+    const uname = String(body.username ?? '').trim();
+    const verdict = loginAllowed(ip, uname);
     if (!verdict.ok) {
       return reply.code(429).send({
         ok: false,
         error: `尝试过于频繁，请 ${Math.ceil(verdict.retryAfterSec / 60)} 分钟后再试`,
       });
     }
-    const body = readBody<{ username?: unknown; password?: unknown }>(req);
-    const username = String(body.username ?? '').trim();
+    const username = uname;
     const password = String(body.password ?? '');
     if (!username || !password) {
       return reply.code(400).send({ ok: false, error: '请输入用户名和口令' });
@@ -215,8 +234,10 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         FROM admin_users WHERE username = ${username}
     `.execute(getDb());
     const u = res.rows[0];
-    if (!u || Number(u.disabled) === 1 || !verifyPassword(password, u.pass_hash)) {
-      const locked = noteLoginFailure(ip);
+    // M12：用户不存在也跑一次 scrypt，消除 40 倍耗时差（防用户名枚举）
+    const passOk = verifyPasswordConstantTime(password, u?.pass_hash);
+    if (!u || Number(u.disabled) === 1 || !passOk) {
+      const locked = noteLoginFailure(ip, username);
       await audit({
         username: username || null,
         action: 'login',
@@ -226,7 +247,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       });
       return reply.code(401).send({ ok: false, error: '用户名或口令错误' });
     }
-    noteLoginSuccess(ip);
+    noteLoginSuccess(ip, username);
     const ts = nowLocal();
     await sql`
       UPDATE admin_users SET last_login_at = ${ts}, last_login_ip = ${ip}
@@ -264,6 +285,9 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/admin/logout', async (req, reply) => {
     const admin = await loadAdmin(req).catch(() => null);
+    // M13：把当前 token 拉黑，立即失效
+    const tok = (req.cookies as Record<string, string> | undefined)?.[COOKIE_SESSION];
+    revokeSession(tok);
     reply.clearCookie(COOKIE_SESSION, { path: '/admin' });
     reply.clearCookie(COOKIE_CSRF, { path: '/admin' });
     if (admin) await audit({ username: admin.username, action: 'logout', ip: req.ip });
@@ -278,7 +302,9 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(401).send({ ok: false, error: '未登录或会话已过期' });
       }
       // 未改初始口令前，只允许改密与读会话
-      if (admin.mustChange && req.url !== '/admin/api/password' && req.url !== '/admin/api/me') {
+      // 用 pathname 比较：req.url 带 query 会把「首次改密」流程锁死（审查 M14）
+      const pathname = (req.url.split('?')[0] ?? '');
+      if (admin.mustChange && pathname !== '/admin/api/password' && pathname !== '/admin/api/me') {
         return reply.code(403).send({ ok: false, error: '请先修改初始口令' });
       }
       if (isWrite(req.method)) {
@@ -389,17 +415,19 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       const policyErr = checkPasswordPolicy(password);
       if (policyErr) return reply.code(400).send({ ok: false, error: policyErr });
       const db = getDb();
-      const dup = await sql<{ n: number }>`
-        SELECT COUNT(*) AS n FROM admin_users WHERE username = ${username}
-      `.execute(db);
-      if (Number(dup.rows[0]?.n ?? 0) > 0) {
-        return reply.code(409).send({ ok: false, error: '用户名已存在' });
-      }
       const ts = nowLocal();
-      await sql`
-        INSERT INTO admin_users (username, pass_hash, created_at, updated_at, disabled, role, must_change)
-        VALUES (${username}, ${hashPassword(password)}, ${ts}, ${ts}, 0, ${role as AdminRole}, 0)
-      `.execute(db);
+      // L16：直接 INSERT，靠主键冲突判重（原来 SELECT 再 INSERT 非原子，并发会 500）
+      try {
+        await sql`
+          INSERT INTO admin_users (username, pass_hash, created_at, updated_at, disabled, role, must_change)
+          VALUES (${username}, ${hashPassword(password)}, ${ts}, ${ts}, 0, ${role as AdminRole}, 0)
+        `.execute(db);
+      } catch (e) {
+        if (/UNIQUE constraint failed/i.test(String((e as Error).message ?? ''))) {
+          return reply.code(409).send({ ok: false, error: '用户名已存在' });
+        }
+        throw e;
+      }
       await audit({ username: admin.username, action: 'account_add', target: username, ip: req.ip, detail: { role } });
       return { ok: true };
     });
@@ -443,6 +471,28 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true, must_change: true };
     });
 
+    scope.post('/admin/api/accounts/role', async (req, reply) => {
+      if (!requireSuper(req, reply)) return undefined;
+      const admin = req.admin as AdminCtx;
+      const body = readBody<{ username?: unknown; role?: unknown }>(req);
+      const target = String(body.username ?? '').trim();
+      const role = String(body.role ?? '');
+      if (!['super', 'ops', 'viewer'].includes(role)) {
+        return reply.code(400).send({ ok: false, error: '角色非法' });
+      }
+      if (target === admin.username) {
+        return reply.code(400).send({ ok: false, error: '不能改自己的角色（避免把自己锁死）' });
+      }
+      const ts = nowLocal();
+      const r = await sql`
+        UPDATE admin_users SET role = ${role as AdminRole}, updated_at = ${ts}
+         WHERE username = ${target}
+      `.execute(getDb());
+      if (!r.numAffectedRows) return reply.code(404).send({ ok: false, error: '账号不存在' });
+      await audit({ username: admin.username, action: 'account_role', target, ip: req.ip, detail: { role } });
+      return { ok: true, role };
+    });
+
     scope.delete('/admin/api/accounts/:username', async (req, reply) => {
       if (!requireSuper(req, reply)) return undefined;
       const admin = req.admin as AdminCtx;
@@ -469,8 +519,16 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       }
       const body = readBody<{ key?: unknown; value?: unknown }>(req);
       const key = String(body.key ?? '') as SettingKey;
-      if (!(key in SETTINGS_DEFAULTS)) {
+      if (!Object.hasOwn(SETTINGS_DEFAULTS, key)) {
         return reply.code(400).send({ ok: false, error: '未知设置项' });
+      }
+      // P2P 信任/互校/白名单属于安全策略，运维只能看不能改（审查 M2）
+      const SUPER_ONLY: Set<string> = new Set([
+        'p2p_trust_non_whitelist', 'p2p_validate_mode', 'p2p_validate_threshold',
+        'p2p_validate_window_sec', 'p2p_validate_min_areas', 'p2p_extra_peers',
+      ]);
+      if (SUPER_ONLY.has(key) && !roleAtLeast(admin.role, 'super')) {
+        return reply.code(403).send({ ok: false, error: 'P2P 安全策略需要超级管理员权限' });
       }
       try {
         const r = await writeSetting(key, body.value, admin.username);

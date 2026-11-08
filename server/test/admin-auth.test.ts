@@ -194,3 +194,90 @@ describe('管理后台鉴权', () => {
     expect(body.settings.p2p_validate_mode).toBe('warn');
   });
 });
+
+describe('越权回归（审查发现的问题）', () => {
+  let superCookie2 = '';
+  let superCsrf2 = '';
+  let viewerCookie2 = '';
+  let viewerCsrf2 = '';
+  let opsCookie = '';
+  let opsCsrf = '';
+
+  beforeAll(async () => {
+    const db = getDb();
+    const now = '2026-11-08 10:00:00';
+    await sql`
+      INSERT INTO admin_users (username, pass_hash, created_at, updated_at, disabled, role, must_change)
+      VALUES ('root2', ${hashPassword('root2pass123')}, ${now}, ${now}, 0, 'super', 0),
+             ('viewer2', ${hashPassword('viewer2pass1')}, ${now}, ${now}, 0, 'viewer', 0),
+             ('ops2', ${hashPassword('ops2pass1234')}, ${now}, ${now}, 0, 'ops', 0)
+      ON CONFLICT (username) DO NOTHING
+    `.execute(db);
+
+    for (const [user, pw] of [['root2', 'root2pass123'], ['viewer2', 'viewer2pass1'], ['ops2', 'ops2pass1234']] as const) {
+      const r = await post('/admin/login', { username: user, password: pw });
+      const jar = parseSetCookies(r.headers['set-cookie'] as string[] | undefined);
+      const c = cookieHeader(jar);
+      const cs = jar.admin_csrf ?? '';
+      if (user === 'root2') { superCookie2 = c; superCsrf2 = cs; }
+      if (user === 'viewer2') { viewerCookie2 = c; viewerCsrf2 = cs; }
+      if (user === 'ops2') { opsCookie = c; opsCsrf = cs; }
+    }
+  });
+
+  it('S1：viewer 不能浏览数据表（会读到口令哈希）', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/admin/api/db/rows?table=admin_users', headers: { cookie: viewerCookie2 },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('S1：super 也不能整表读 admin_users（敏感表禁读）', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/admin/api/db/rows?table=admin_users', headers: { cookie: superCookie2 },
+    });
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { error: string }).error).toContain('敏感');
+  });
+
+  it('S2：viewer 不能下载整库备份', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/admin/api/backup/download?name=x.db', headers: { cookie: viewerCookie2 },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('S3：viewer 不能删令牌池', async () => {
+    const res = await post('/admin/api/tokens/purge', {}, {
+      cookie: viewerCookie2, 'x-admin-csrf': viewerCsrf2,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('M2：ops 不能改 P2P 安全策略（需 super）', async () => {
+    const res = await post('/admin/api/settings', {
+      key: 'p2p_validate_mode', value: 'off',
+    }, { cookie: opsCookie, 'x-admin-csrf': opsCsrf });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('S8：只读 SQL 强制截断（自带 limit 999999 也不放过）', async () => {
+    const res = await post('/admin/api/db/query', {
+      sql: 'SELECT 1 AS x FROM snapshots LIMIT 999999',
+    }, { cookie: superCookie2, 'x-admin-csrf': superCsrf2 });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; truncated?: boolean };
+    expect(body.ok).toBe(true);
+  });
+
+  it('M13：登出后旧 cookie 立即失效', async () => {
+    const login = await post('/admin/login', { username: 'viewer2', password: 'viewer2pass1' });
+    const jar = parseSetCookies(login.headers['set-cookie'] as string[] | undefined);
+    const cookie = cookieHeader(jar);
+    // 登出
+    await app.inject({ method: 'POST', url: '/admin/logout', headers: { cookie } });
+    // 旧 cookie 再用
+    const res = await app.inject({ method: 'GET', url: '/admin/api/me', headers: { cookie } });
+    expect(res.statusCode).toBe(401);
+  });
+});

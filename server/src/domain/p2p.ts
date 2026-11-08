@@ -44,6 +44,7 @@ import { getDb } from '../db/index.js';
 import { logger } from '../logger.js';
 import { storeSnapshot, snapshotDigest } from './worker.js';
 import { recordValidation, validateIncoming } from './p2pvalidate.js';
+import { getSetting } from './adminsettings.js';
 import { nowStr } from './store.js';
 
 const TOPIC = 'charge-snapshots';
@@ -139,6 +140,16 @@ export async function loadOrCreateKey(keyFile: string): Promise<Uint8Array> {
 }
 
 /** 白名单解析结果：peerId 集合 + 可主动连接的地址 */
+/** 是否采纳非白名单节点数据：settings 优先，null 时回退 env */
+async function trustNonWhitelist(): Promise<boolean> {
+  try {
+    const s = await getSetting('p2p_trust_non_whitelist');
+    return s === null ? P2P_TRUST_NON_WHITELIST : s;
+  } catch {
+    return P2P_TRUST_NON_WHITELIST;
+  }
+}
+
 export interface WhitelistResult {
   ids: Set<string>;
   addrs: string[];
@@ -340,7 +351,7 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
     },
 
     onSnapshot(cb) {
-      pubsub.addEventListener('message', (evt: CustomEvent<Message>) => {
+      pubsub.addEventListener('message', async (evt: CustomEvent<Message>) => {
         const detail = evt.detail;
         const { topic, data } = detail;
         if (topic !== TOPIC) return;
@@ -348,8 +359,9 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
         // 而不是消息内容里自填的 sender（可伪造）
         if (detail.type !== 'signed') return;
         const fromId = detail.from.toString();
-        // 白名单外节点：默认丢弃；P2P_TRUST_NON_WHITELIST=true 时也采纳
-        if (!whitelist.has(fromId) && !P2P_TRUST_NON_WHITELIST) return;
+        // 白名单外节点：默认丢弃；信任开关打开时也采纳
+        // （读 app_settings 而非启动期常量，否则后台切开关是假的 —— 审查 M1）
+        if (!whitelist.has(fromId) && !(await trustNonWhitelist())) return;
         let msg: SnapshotMessage;
         try {
           msg = JSON.parse(new TextDecoder().decode(data));
@@ -374,13 +386,13 @@ export async function startP2p(opts: P2pOptions = {}): Promise<P2pHandle> {
       });
 
       // 状态心跳：更新节点元数据（名称/版本/统计）
-      pubsub.addEventListener('message', (evt: CustomEvent<Message>) => {
+      pubsub.addEventListener('message', async (evt: CustomEvent<Message>) => {
         const detail = evt.detail;
         const { topic, data } = detail;
         if (topic !== STATUS_TOPIC) return;
         if (detail.type !== 'signed') return;
         const fromId = detail.from.toString();
-        if (!whitelist.has(fromId) && !P2P_TRUST_NON_WHITELIST) return;
+        if (!whitelist.has(fromId) && !(await trustNonWhitelist())) return;
         let msg: StatusMessage;
         try {
           msg = JSON.parse(new TextDecoder().decode(data));
@@ -593,8 +605,9 @@ export function p2pSelfAddrs(): string[] {
   return p2pInstance ? p2pInstance.addresses : [];
 }
 
+/** 当前白名单数量（直接读 handle，避免与后台改动不同步） */
 export function p2pWhitelistCount(): number {
-  return p2pWhitelistSize;
+  return p2pInstance?.whitelistSize() ?? p2pWhitelistSize;
 }
 
 export async function stopP2p(): Promise<void> {

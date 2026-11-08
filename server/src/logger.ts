@@ -20,9 +20,13 @@ export const LEVEL_TEXT: Record<number, string> = {
   10: 'trace', 20: 'debug', 30: 'info', 40: 'warn', 50: 'error', 60: 'fatal',
 };
 
+const MAX_MSG = 2000;
+
 function pushRing(level: number, msg: string, extra?: Record<string, unknown>): void {
   ringSeq += 1;
-  ring.push({ seq: ringSeq, ts: Date.now(), level, msg, extra: sanitize(extra) });
+  // L13：单条消息可能是 MB 级（payload dump），截断避免 2000 条撑爆内存
+  const text = msg.length > MAX_MSG ? `${msg.slice(0, MAX_MSG)}…` : msg;
+  ring.push({ seq: ringSeq, ts: Date.now(), level, msg: text, extra: sanitize(extra) });
   if (ring.length > RING_MAX) ring.splice(0, ring.length - RING_MAX);
 }
 

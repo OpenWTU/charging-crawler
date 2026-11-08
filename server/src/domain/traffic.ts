@@ -5,6 +5,8 @@
  * 避免资产请求把噪声淹没真实流量。进程重启清零（历史归档在 traffic_minute，后续接）。
  */
 const MAX_BUCKETS = 5000;
+/** 只保留最近 N 分钟的桶（原实现无时间淘汰，靠削到 5000 条硬顶，会把当前分钟的真实数据删掉） */
+const KEEP_MINUTES = 180;
 
 interface Bucket {
   hits: number;
@@ -43,16 +45,38 @@ export function shouldTrack(path: string): boolean {
   return true;
 }
 
+/** 淘汰超过 KEEP_MINUTES 的桶 */
+function sweepOldMinutes(): void {
+  const cutoff = minuteOf(new Date(Date.now() - KEEP_MINUTES * 60_000));
+  for (const key of buckets.keys()) {
+    const minute = key.split('|')[0] ?? '';
+    if (minute < cutoff) buckets.delete(key);
+  }
+}
+
 export function noteRequest(rawPath: string, statusCode: number, ip: string | undefined): void {
   if (!shouldTrack(rawPath)) return;
+  // L14：404 归到一个桶里，否则随机路径能凭空制造无限 key
+  if (statusCode === 404) {
+    const minute = minuteOf(new Date());
+    const key = `${minute}|/_notfound|4xx`;
+    let b = buckets.get(key);
+    if (!b) {
+      b = { hits: 0, ips: new Set() };
+      buckets.set(key, b);
+    }
+    b.hits += 1;
+    if (ip && b.ips.size < 5000) b.ips.add(ip);
+    return;
+  }
   const minute = minuteOf(new Date());
   const key = `${minute}|${normalizePath(rawPath)}|${statusGroup(statusCode)}`;
   let b = buckets.get(key);
   if (!b) {
     if (buckets.size >= MAX_BUCKETS) {
-      // 超上限就清最老的一分钟（简单 LRU：按 key 排序取最小的）
-      const oldest = [...buckets.keys()].sort()[0];
-      if (oldest) buckets.delete(oldest);
+      // 先按时间淘汰旧分钟；仍然超限就整体清空（比逐条排序删更省 CPU）
+      sweepOldMinutes();
+      if (buckets.size >= MAX_BUCKETS) buckets.clear();
     }
     b = { hits: 0, ips: new Set() };
     buckets.set(key, b);

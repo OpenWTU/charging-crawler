@@ -52,6 +52,8 @@ export interface AreasTable {
   last_seen: Text | null;
   lat: ColumnType<number | null, number | null, number | null>;
   lng: ColumnType<number | null, number | null, number | null>;
+  /** 软删除时间（管理后台删区域只写这里） */
+  deleted_at: ColumnType<string | null, string | null, string | null>;
 }
 
 export interface AppSettingsTable {
@@ -81,6 +83,10 @@ export interface AdminUsersTable {
   created_at: Text;
   updated_at: Text;
   disabled: Bool;
+  role: Text;
+  must_change: Int;
+  last_login_at: Text | null;
+  last_login_ip: Text | null;
 }
 
 export interface TokensTable {
@@ -110,6 +116,8 @@ export interface DevicesTable {
   uploads: Int;
   revoked: Bool;
   status: Text;
+  /** 软删除时间（管理后台删设备只写这里，数据仍可追溯） */
+  deleted_at: Text | null;
 }
 
 export interface ControllersTable {

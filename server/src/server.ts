@@ -53,6 +53,23 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
     }
   });
 
+  // ⚠️ 错误处理器必须**在第一个路由注册之前**安装：Fastify 在注册时捕获处理器，
+  // 注册晚于路由会让那些路由退化成默认处理器（实测会吐 ERR_SQLITE_ERROR + 表名）。
+  app.setErrorHandler((err: FastifyError, req, reply) => {
+    req.log.error({ err, url: req.url }, '未捕获错误');
+    const msg = String((err as { message?: string }).message ?? '');
+    // 约束类错误是可预期的客户端错误：映射成 400 并隐藏内部表/列名
+    if (/UNIQUE constraint failed|NOT NULL constraint failed|CHECK constraint failed/i.test(msg)) {
+      return reply.code(400).send({ ok: false, error: '数据冲突：该值已存在或不符合约束' });
+    }
+    // 与 Python 版一致：不向客户端泄露堆栈；补 ok:false 让管理端契约统一
+    return reply.code(err.statusCode ?? 500).send({ ok: false, error: 'internal_error' });
+  });
+
+  app.setNotFoundHandler((req, reply) => {
+    return reply.code(404).send({ ok: false, error: 'not_found', path: req.url });
+  });
+
   await app.register(cookie);
   await registerPortsRoutes(app);
   await registerAnalyticsRoutes(app);
@@ -89,16 +106,6 @@ export async function buildServer(opts: FastifyServerOptions = {}): Promise<App>
   // 注意：/api/version 与 /api/latest 由 routes/static.ts 提供（读真实 version.json
   // 与最新快照），这里不再放占位实现 —— 占位数据会让 App 的更新检查失效。
 
-  app.setErrorHandler((err: FastifyError, req, reply) => {
-    req.log.error({ err, url: req.url }, '未捕获错误');
-    // 与 Python 版一致：不向客户端泄露堆栈
-    return reply.code(err.statusCode ?? 500).send({ error: 'internal_error' });
-  });
-
-  app.setNotFoundHandler((req, reply) => {
-    return reply.code(404).send({ error: 'not_found', path: req.url });
-  });
-
   return app;
 }
 
@@ -124,6 +131,8 @@ async function main(): Promise<void> {
 
   logDbSummary();
   const app = await buildServer();
+  // L6：初始管理员要在 listen 之前建好（否则启动瞬间登录全 401）
+  await ensureAdminSeed();
   await app.listen({ host: HOST, port: PORT });
   app.log.info({ host: HOST, port: PORT, env: NODE_ENV }, 'charge-server 已启动');
 
@@ -144,8 +153,7 @@ async function main(): Promise<void> {
     app.log.error({ err }, '[p2p] 初始化失败，服务继续以单节点模式运行');
   }
 
-  // 管理后台初始账号（admin_users 为空且配置了 ADMIN_INIT_PASSWORD 时才创建）
-  await ensureAdminSeed();
+
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, '收到退出信号，正在关闭');

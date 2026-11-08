@@ -18,8 +18,27 @@ import { adminOf, nowLocal, readBody, requireRole } from './admin-util.js';
 const BACKUP_DIR = path.join(path.dirname(DATABASE_PATH), 'backups');
 const UPDATE_REQUEST = path.join(path.dirname(DATABASE_PATH), 'update.request');
 const MAX_BACKUPS = 10;
+/** 备份串行锁：VACUUM INTO 是同步的，并发跑会互相拖死 */
+let backupBusy = false;
+
+/** 把同步的 VACUUM INTO 放到下一个事件循环，至少让当前请求先返回 */
+function vacuumInto(target: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    setImmediate(() => {
+      try {
+        getRaw().exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
+}
 const MAX_QUERY_ROWS = 5000;
 const QUERY_TIMEOUT_MS = 5000;
+
+/** 不允许整表浏览/导出的敏感表 */
+const SECRET_TABLES = new Set(['admin_users', 'devices', 'nonces']);
 
 /** 只读 SQL 的黑名单（出现即拒绝） */
 const SQL_DENY = /\b(insert|update|delete|drop|alter|create|replace|attach|detach|pragma|vacuum|reindex|begin|commit|rollback|savepoint|release)\b/i;
@@ -32,16 +51,22 @@ function ensureDir(dir: string): void {
   }
 }
 
-function listBackups(): Array<{ name: string; size: number; mtime: string }> {
+function nowLocal2(d: Date): string {
+  const p = (x: number): string => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} `
+    + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function listBackups(): Array<{ name: string; size: number; mtime: string; mtime_ms: number }> {
   ensureDir(BACKUP_DIR);
   try {
     return fs.readdirSync(BACKUP_DIR)
       .filter((f) => f.endsWith('.db'))
       .map((f) => {
         const st = fs.statSync(path.join(BACKUP_DIR, f));
-        return { name: f, size: st.size, mtime: nowLocal() };
+        return { name: f, size: st.size, mtime: nowLocal2(st.mtime), mtime_ms: st.mtimeMs };
       })
-      .sort((a, b) => (a.name < b.name ? 1 : -1));
+      .sort((a, b) => b.mtime_ms - a.mtime_ms); // 按真实修改时间排序（原按文件名字典序会先删掉 before-restore-*）
   } catch {
     return [];
   }
@@ -119,15 +144,17 @@ export async function registerAdminSystemRoutes(scope: FastifyInstance): Promise
   scope.post('/admin/api/backup/create', async (req, reply) => {
     if (!requireRole(req, reply, 'ops')) return undefined;
     const admin = adminOf(req);
+    if (backupBusy) return reply.code(429).send({ ok: false, error: '已有备份任务在执行，请稍候' });
+    backupBusy = true;
     ensureDir(BACKUP_DIR);
     const stamp = nowLocal().replace(/[-: ]/g, '').slice(0, 14);
     const target = path.join(BACKUP_DIR, `charge-${stamp}.db`);
     try {
-      // VACUUM INTO 生成一致性快照，不锁库
-      getRaw().exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
+      // VACUUM INTO 生成一致性快照（同步读全库，放 setImmediate 让出事件循环）
+      await vacuumInto(target);
       const st = fs.statSync(target);
       // 只留最近 MAX_BACKUPS 份
-      const all = listBackups();
+      const all = listBackups().filter((b) => !b.name.startsWith('before-restore-'));
       for (const old of all.slice(MAX_BACKUPS)) {
         try {
           fs.unlinkSync(path.join(BACKUP_DIR, old.name));
@@ -139,17 +166,22 @@ export async function registerAdminSystemRoutes(scope: FastifyInstance): Promise
       return { ok: true, name: path.basename(target), size: st.size };
     } catch (e) {
       return reply.code(500).send({ ok: false, error: e instanceof Error ? e.message : '备份失败' });
+    } finally {
+      backupBusy = false;
     }
   });
 
   scope.get('/admin/api/backup/download', async (req, reply) => {
+    // 整库文件含口令哈希与设备密钥密文，必须超管
+    if (!requireRole(req, reply, 'super')) return undefined;
     const name = String((req.query as { name?: string }).name ?? '');
     // 只允许备份目录内的 .db 文件（防路径穿越）
     if (!/^[\w.-]+\.db$/.test(name)) {
       return reply.code(400).send({ ok: false, error: '文件名非法' });
     }
     const full = path.join(BACKUP_DIR, name);
-    if (!path.resolve(full).startsWith(path.resolve(BACKUP_DIR))) {
+    const resolvedDir = path.resolve(BACKUP_DIR) + path.sep;
+    if (!path.resolve(full).startsWith(resolvedDir)) {
       return reply.code(400).send({ ok: false, error: '路径非法' });
     }
     try {
@@ -191,14 +223,17 @@ export async function registerAdminSystemRoutes(scope: FastifyInstance): Promise
       username: admin.username, action: 'backup_restore', target: name, ip: req.ip,
       detail: { safety_copy: path.basename(safe) },
     });
+    // M16：明确告诉前端"没有真的恢复"（原来返回 ok:true 会让运维以为已回滚）
     return {
       ok: true,
-      note: '已生成安全副本并登记恢复请求。实际文件替换需要重启服务（当前连接不能热替换 SQLite 文件）。',
+      applied: false,
+      note: '已生成恢复前安全副本；实际替换需在宿主机执行（SQLite 连接不能热替换文件）。',
       safety_copy: path.basename(safe),
+      target: name,
       manual_steps: [
-        `1. 停服务：docker stop charge-node`,
+        '1. 停服务：docker stop charge-node',
         `2. 替换：cp ${src} ${DATABASE_PATH}`,
-        `3. 启动：docker start charge-node`,
+        '3. 启动：docker start charge-node',
         `4. 回滚：用 ${path.basename(safe)} 换回`,
       ],
     };
@@ -224,10 +259,19 @@ export async function registerAdminSystemRoutes(scope: FastifyInstance): Promise
   });
 
   scope.get('/admin/api/db/rows', async (req, reply) => {
+    // 数据浏览器是超管专属：能读任意表就意味着能读 admin_users.pass_hash / devices.secret_enc
+    if (!requireRole(req, reply, 'super')) return undefined;
     const q = req.query as { table?: string; limit?: string; offset?: string };
     const table = String(q.table ?? '');
     if (!/^[a-z_][a-z0-9_]*$/.test(table)) {
       return reply.code(400).send({ ok: false, error: '表名非法' });
+    }
+    // 敏感表直接禁读（即使 super 也不给整表导出密钥/哈希）
+    if (SECRET_TABLES.has(table)) {
+      return reply.code(403).send({
+        ok: false,
+        error: `${table} 含敏感字段（口令哈希/设备密钥），不允许整表浏览`,
+      });
     }
     const limit = Math.min(Math.max(Number(q.limit) || 100, 1), MAX_QUERY_ROWS);
     const offset = Math.max(Number(q.offset) || 0, 0);
@@ -263,13 +307,16 @@ export async function registerAdminSystemRoutes(scope: FastifyInstance): Promise
     if (!/\blimit\b/i.test(text)) text = `${text} LIMIT ${MAX_QUERY_ROWS}`;
     const started = Date.now();
     try {
-      const rows = (await sql<Record<string, unknown>>`${sql.raw(text)}`.execute(getDb())).rows;
+      const all = (await sql<Record<string, unknown>>`${sql.raw(text)}`.execute(getDb())).rows;
+      // 强制截断：SQL 里自带 limit 999999 也拦得住（原实现只在没写 limit 时才补，实测 200k 行 / 453MB RSS）
+      const rows = all.slice(0, MAX_QUERY_ROWS);
+      const truncated = all.length > MAX_QUERY_ROWS;
       const cols = rows.length ? Object.keys(rows[0] ?? {}) : [];
       await audit({
         username: admin.username, action: 'db_query', ip: req.ip,
         detail: { sql: text.slice(0, 200), rows: rows.length, ms: Date.now() - started },
       });
-      return { ok: true, columns: cols, rows, ms: Date.now() - started };
+      return { ok: true, columns: cols, rows, truncated, ms: Date.now() - started };
     } catch (e) {
       return reply.code(400).send({
         ok: false,

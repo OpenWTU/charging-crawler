@@ -99,12 +99,12 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
 
     const tsInt = Number.parseInt(ts, 10);
     if (!Number.isFinite(tsInt)) {
-      recordBan(deviceId || null, ip, 'bad_ts');
+      recordBan(null, ip, 'bad_ts');
       markUpload(req, 'bad_ts');
       return reply.code(401).send({ ok: false, error: '时间戳非法' });
     }
     if (Math.abs(Date.now() / 1000 - tsInt) > MAX_SKEW) {
-      recordBan(deviceId || null, ip, 'bad_ts');
+      recordBan(null, ip, 'bad_ts');
       markUpload(req, 'bad_ts_expired');
       return reply.code(401).send({ ok: false, error: '时间戳过期' });
     }
@@ -144,7 +144,8 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
       }
     }
     if (!deviceOk) {
-      recordBan(deviceId || null, ip, 'bad_sig');
+      // 只在验签"失败"时按 IP 计数（device_id 可能是冒充的）
+      recordBan(null, ip, 'bad_sig');
       markUpload(req, 'bad_sig', { deviceId: deviceId ?? null });
       return reply.code(401).send({ ok: false, error: '签名校验失败（设备未注册或已撤销）' });
     }
@@ -385,7 +386,8 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     }
 
     const existed = await sql<{ secret_enc: string; revoked: number; status: string }>`
-      SELECT secret_enc, revoked, status FROM devices WHERE device_id = ${did}
+      SELECT secret_enc, revoked, status, COALESCE(deleted_at, '') AS deleted_at
+        FROM devices WHERE device_id = ${did}
     `.execute(db);
     const e = existed.rows[0];
     if (e) {
@@ -430,6 +432,8 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
           secret_enc: secretEnc,
           model: String(obj.model ?? '').slice(0, 80),
           app_version: String(obj.app_version ?? '').slice(0, 32),
+          // 已软删的设备重新注册 = 显式恢复（否则会变成后台看不见的幽灵设备）
+          deleted_at: null,
         }),
       )
       .execute();

@@ -70,6 +70,16 @@ export function verifyPassword(pw: string, stored: string): boolean {
   }
 }
 
+/** 用户不存在时也要跑一次 scrypt，否则耗时差 40 倍可枚举用户名（审查 M12） */
+const DUMMY_HASH = hashPassword('dummy-password-for-timing');
+
+/** 恒定耗时的口令校验：用户不存在/被禁用时也走同样开销 */
+export function verifyPasswordConstantTime(pw: string, stored: string | null | undefined): boolean {
+  const ok = stored ? verifyPassword(pw, stored) : false;
+  if (!stored) verifyPassword(pw, DUMMY_HASH); // 等时
+  return ok;
+}
+
 /* ---------------- 会话 ---------------- */
 
 export interface SessionPayload {
@@ -172,37 +182,76 @@ const loginState = new Map<string, LoginState>();
 
 export type LoginVerdict = { ok: true } | { ok: false; retryAfterSec: number };
 
+/** 限流键：IP 与 IP+用户名 各计一份（只看 IP 时全站共享一个桶，任何人 5 次就能锁死所有管理员） */
+function keysOf(ip: string, username?: string): string[] {
+  const out = [`ip:${ip}`];
+  const u = String(username ?? '').trim().toLowerCase();
+  if (u) out.push(`ipu:${ip}|${u}`);
+  return out;
+}
+
 /** 是否允许尝试登录（被锁则给出剩余秒数） */
-export function loginAllowed(ip: string): LoginVerdict {
+export function loginAllowed(ip: string, username?: string): LoginVerdict {
   const now = Math.floor(Date.now() / 1000);
-  const s = loginState.get(ip);
-  if (!s) return { ok: true };
-  if (s.lockedUntil > now) return { ok: false, retryAfterSec: s.lockedUntil - now };
-  if (now - s.windowStart > LOGIN_WINDOW_SEC) {
-    loginState.delete(ip);
-    return { ok: true };
+  for (const key of keysOf(ip, username)) {
+    const s = loginState.get(key);
+    if (!s) continue;
+    if (s.lockedUntil > now) return { ok: false, retryAfterSec: s.lockedUntil - now };
+    if (now - s.windowStart > LOGIN_WINDOW_SEC) loginState.delete(key);
   }
   return { ok: true };
 }
 
 /** 记一次失败；返回是否触发锁定 */
-export function noteLoginFailure(ip: string): boolean {
+export function noteLoginFailure(ip: string, username?: string): boolean {
   const now = Math.floor(Date.now() / 1000);
-  let s = loginState.get(ip);
-  if (!s || now - s.windowStart > LOGIN_WINDOW_SEC) {
-    s = { fails: 0, windowStart: now, lockedUntil: 0 };
-    loginState.set(ip, s);
+  let locked = false;
+  for (const key of keysOf(ip, username)) {
+    let s = loginState.get(key);
+    if (!s || now - s.windowStart > LOGIN_WINDOW_SEC) {
+      s = { fails: 0, windowStart: now, lockedUntil: 0 };
+      loginState.set(key, s);
+    }
+    s.fails += 1;
+    if (s.fails >= LOGIN_MAX_FAILS) {
+      s.lockedUntil = now + LOGIN_LOCK_SEC;
+      locked = true;
+    }
   }
-  s.fails += 1;
-  if (s.fails >= LOGIN_MAX_FAILS) {
-    s.lockedUntil = now + LOGIN_LOCK_SEC;
-    return true;
-  }
-  return false;
+  return locked;
 }
 
-export function noteLoginSuccess(ip: string): void {
-  loginState.delete(ip);
+export function noteLoginSuccess(ip: string, username?: string): void {
+  for (const key of keysOf(ip, username)) loginState.delete(key);
+}
+
+/* ---------------- 会话黑名单（M13：登出立即失效） ---------------- */
+
+const revoked = new Map<string, number>();
+
+/** 登出时把会话 token 的签名摘要拉黑到过期为止 */
+export function revokeSession(token: string | undefined | null): void {
+  if (!token) return;
+  const exp = verifySession(token)?.exp;
+  if (!exp) return;
+  const now = Math.floor(Date.now() / 1000);
+  if (exp <= now) return;
+  const sig = String(token).split('.')[1] ?? token;
+  revoked.set(sig, exp);
+  // 顺手清已过期的
+  for (const [k, e] of revoked) if (e <= now) revoked.delete(k);
+}
+
+export function isSessionRevoked(token: string | undefined | null): boolean {
+  if (!token) return false;
+  const sig = String(token).split('.')[1] ?? token;
+  const exp = revoked.get(sig);
+  if (!exp) return false;
+  if (exp <= Math.floor(Date.now() / 1000)) {
+    revoked.delete(sig);
+    return false;
+  }
+  return true;
 }
 
 /** 测试用：清空限流状态 */

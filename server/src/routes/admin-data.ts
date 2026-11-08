@@ -14,6 +14,8 @@ import { getWorkerState } from '../domain/worker.js';
 import { banlistStats } from '../domain/banlist.js';
 import { p2pPeers, p2pSelfId, p2pSelfName, p2pWhitelistCount } from '../domain/p2p.js';
 import { readSettings } from '../domain/adminsettings.js';
+import { adminOf, readBody, requireRole } from './admin-util.js';
+import { audit } from '../domain/adminaudit.js';
 
 function nowLocal(): string {
   const d = new Date();
@@ -292,28 +294,28 @@ export async function registerAdminDataRoutes(scope: FastifyInstance): Promise<v
     };
   });
 
-  scope.post('/admin/api/tokens/purge', async () => {
+  scope.post('/admin/api/tokens/purge', async (req, reply) => {
+    if (!requireRole(req, reply, 'ops')) return undefined;
+    const admin = adminOf(req);
     const nowSec = Math.floor(Date.now() / 1000);
     const r = await sql`
       DELETE FROM token_pool WHERE COALESCE(expires_at, 0) <= ${nowSec}
     `.execute(getDb());
-    return { ok: true, deleted: Number(r.numAffectedRows ?? 0) };
+    const deleted = Number(r.numAffectedRows ?? 0);
+    await audit({ username: admin.username, action: 'token_purge', ip: req.ip, detail: { deleted } });
+    return { ok: true, deleted };
   });
 
-  scope.post('/admin/api/tokens/delete', async (req) => {
-    // upload.ts 把全局 json parser 改成 buffer，这里自己解析
-    const raw = req.body as unknown;
-    let parsed: { ids?: unknown } = {};
-    if (Buffer.isBuffer(raw)) {
-      try { parsed = JSON.parse(raw.toString('utf8')) as { ids?: unknown }; } catch { parsed = {}; }
-    } else if (raw && typeof raw === 'object') {
-      parsed = raw as { ids?: unknown };
-    }
-    const body = parsed;
+  scope.post('/admin/api/tokens/delete', async (req, reply) => {
+    if (!requireRole(req, reply, 'ops')) return undefined;
+    const admin = adminOf(req);
+    const body = readBody<{ ids?: unknown }>(req);
     const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter(Number.isFinite) : [];
     if (!ids.length) return { ok: true, deleted: 0 };
     const r = await sql`DELETE FROM token_pool WHERE id IN (${sql.join(ids)})`.execute(getDb());
-    return { ok: true, deleted: Number(r.numAffectedRows ?? 0) };
+    const deleted = Number(r.numAffectedRows ?? 0);
+    await audit({ username: admin.username, action: 'token_delete', target: ids.join(','), ip: req.ip, detail: { deleted } });
+    return { ok: true, deleted };
   });
 
   /* ================= 实时数据 ================= */

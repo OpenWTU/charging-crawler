@@ -71,6 +71,8 @@ export interface ValidateResult {
     min_areas: number;
     areas: AreaCompare[];
     skipped: SkippedArea[];
+    over_ratio?: number;
+    total_mismatch_ratio?: number;
     error?: string;
   };
 }
@@ -102,15 +104,27 @@ export async function readValidateConfig(): Promise<ValidateConfig> {
   };
 }
 
-/** 本地时间字符串 ± 秒 → 同格式字符串（用于 SQL 区间比较） */
-function shiftLocal(ts: string, deltaSec: number): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(String(ts));
-  if (!m) return ts;
-  const base = new Date(
+/** 时间字符串 → 秒级 epoch（支持 `2026-11-08 10:00:00`、ISO、带时区/`Z`） */
+function toEpoch(ts: string): number {
+  const s = String(ts).trim();
+  if (!s) return NaN;
+  // 先按原样 Date.parse（ISO/带时区都能处理）；失败再按本地格式兜底
+  let ms = Date.parse(s);
+  if (Number.isFinite(ms)) return ms / 1000;
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(s);
+  if (!m) return NaN;
+  ms = new Date(
     Number(m[1]), Number(m[2]) - 1, Number(m[3]),
     Number(m[4]), Number(m[5]), Number(m[6]),
   ).getTime();
-  const d = new Date(base + deltaSec * 1000);
+  return Number.isFinite(ms) ? ms / 1000 : NaN;
+}
+
+/** 本地时间字符串 ± 秒 → 同格式字符串（用于 SQL 区间比较） */
+function shiftLocal(ts: string, deltaSec: number): string {
+  const base = toEpoch(ts);
+  if (!Number.isFinite(base)) return ts;
+  const d = new Date((base + deltaSec) * 1000);
   const p = (x: number): string => String(x).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} `
     + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
@@ -135,6 +149,9 @@ async function findBaseline(
   const res = await sql<{ id: number; payload: string; captured_at: string | null }>`
     SELECT id, payload, captured_at FROM snapshots
      WHERE captured_at IS NOT NULL
+       -- M9：只信本节点自己采的数据（device_id 非空 = App 上传/本机 worker），
+       -- 否则恶意节点先发一条"基准"就能让所有诚实节点被判偏差
+       AND device_id IS NOT NULL
        AND captured_at >= ${from} AND captured_at <= ${to}
      ORDER BY
        CASE WHEN device_id IS NOT NULL THEN 0 ELSE 1 END,
@@ -298,10 +315,41 @@ export async function validateIncoming(
     }
 
     // ④ 算偏差 + 决策
+    //
+    // M8：原来用 max(单区域偏差) 判定，1 口的小区域翻转就会丢掉整条快照（含所有正常区域）。
+    // 改成「显著偏差区域的占比」，单点异常不再一票否决。
+    // M7：total_mismatch 占比过高（远端把所有 total 都改了一位）时，本应 accept 会放行错数据，
+    // 这里判 suspect 让它至少可见。
+    const overThreshold = compares.filter((c) => c.deviation > cfg.threshold);
+    const overRatio = compares.length ? overThreshold.length / compares.length : 0;
     const deviation = Math.max(...compares.map((c) => c.deviation));
-    const detail = { ...baseDetail, areas: compares, skipped };
+    const needOver = Math.max(2, Math.ceil(compares.length * 0.4));
+    const exceeded = overThreshold.length >= needOver
+      || (compares.length === 1 && overThreshold.length === 1);
+    const totalMismatchRatio = skipped.length
+      ? skipped.filter((s) => s.why === 'total_mismatch').length / (skipped.length + compares.length)
+      : 0;
+    const detail = {
+      ...baseDetail,
+      areas: compares,
+      skipped,
+      over_ratio: Number(overRatio.toFixed(3)),
+      total_mismatch_ratio: Number(totalMismatchRatio.toFixed(3)),
+    };
 
-    if (deviation > cfg.threshold) {
+    if (totalMismatchRatio > 0.5) {
+      // 大部分区域的 total 都对不上：数据可疑，但不直接丢（可能是上游改版）
+      return {
+        decision: cfg.mode === 'strict' ? 'suspect' : 'accept',
+        reason: 'deviation_exceeded',
+        deviation,
+        baseSnapshotId: baseline.id,
+        comparable: compares.length,
+        detail,
+      };
+    }
+
+    if (exceeded) {
       const decision: Decision = cfg.mode === 'strict' ? 'drop' : 'suspect';
       return {
         decision,

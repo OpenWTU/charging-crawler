@@ -72,6 +72,13 @@ export const SETTING_SCHEMA: Record<
 
 /* ---------------- 缓存 ---------------- */
 
+function nowLocal(): string {
+  const d = new Date();
+  const p = (x: number): string => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} `
+    + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 let cache: AppSettings | null = null;
 
 export function invalidateSettingsCache(): void {
@@ -93,8 +100,13 @@ function coerce<K extends SettingKey>(key: K, raw: unknown): AppSettings[K] {
     if (key === 'p2p_extra_peers') {
       return (Array.isArray(v) ? v : []) as AppSettings[K];
     }
-    const n = Number(v);
-    return (Number.isFinite(n) ? n : def) as AppSettings[K];
+    let n = Number(v);
+    if (!Number.isFinite(n)) return def;
+    // L4：读取侧也钳制，防止手工改库写入越界值
+    const spec = SETTING_SCHEMA[key];
+    if (spec?.min !== undefined) n = Math.max(spec.min, n);
+    if (spec?.max !== undefined) n = Math.min(spec.max, n);
+    return n as AppSettings[K];
   } catch {
     return def;
   }
@@ -110,12 +122,13 @@ export async function readSettings(): Promise<AppSettings> {
     `.execute(getDb());
     for (const row of res.rows) {
       const key = row.key as SettingKey;
-      if (!(key in SETTINGS_DEFAULTS)) continue;
+      if (!Object.hasOwn(SETTINGS_DEFAULTS, key)) continue;
       // 逐键沿用默认值类型
       Object.assign(out, { [key]: coerce(key, row.value) });
     }
   } catch (e) {
-    logger.warn({ err: e }, '[settings] 读取失败，使用默认值');
+    logger.warn({ err: e }, '[settings] 读取失败，本次使用默认值（不写缓存，避免一次抖动永久生效）');
+    return out;
   }
   cache = out;
   return out;
@@ -190,16 +203,17 @@ export async function writeSetting(
   const oldRaw = oldRes.rows[0]?.value ?? null;
   const encoded = JSON.stringify(value);
 
-  await sql`
-    INSERT INTO app_settings (key, value) VALUES (${key}, ${encoded})
-    ON CONFLICT (key) DO UPDATE SET value = excluded.value
-  `.execute(db);
-
-  await sql`
-    INSERT INTO config_history (ts, username, key, old_value, new_value)
-    VALUES (${new Date().toISOString().slice(0, 19).replace('T', ' ')},
-            ${username}, ${key}, ${oldRaw}, ${encoded})
-  `.execute(db);
+  // L3：两条写必须同事务，否则配置改了但历史没记
+  await db.transaction().execute(async (trx) => {
+    await sql`
+      INSERT INTO app_settings (key, value) VALUES (${key}, ${encoded})
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+    `.execute(trx);
+    await sql`
+      INSERT INTO config_history (ts, username, key, old_value, new_value)
+      VALUES (${nowLocal()}, ${username}, ${key}, ${oldRaw}, ${encoded})
+    `.execute(trx);
+  });
 
   invalidateSettingsCache();
   logger.info({ key, by: username }, '[settings] 已更新');
