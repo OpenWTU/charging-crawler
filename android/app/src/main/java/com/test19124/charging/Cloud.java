@@ -513,10 +513,18 @@ public final class Cloud {
      * 每源 4 秒超时，任一成功即返回；**每个源都写一条 DebugLog**
      * （成功记版本号与耗时，失败记异常类型与耗时），排查时不用猜走的哪条路。
      */
+    /**
+     * 最近一次 fetchVersion 的结果。下载 APK 时用它判断「version.json 是从哪个通道拿到的」，
+     * 从而优先从同一通道下载安装包（用户要求：哪个通道能通就从哪个通道下）。
+     */
+    private static volatile JSONObject lastVersionInfo = null;
+
     public static JSONObject fetchVersion() throws Exception {
         long t0 = System.currentTimeMillis();
         try {
             JSONObject d = fetchVersionFromGitHub();
+            d.put("_source", "github");
+            lastVersionInfo = d;
             DebugLog.add("版本检查[GitHub] 成功 → " + d.optString("versionName")
                     + "，" + (System.currentTimeMillis() - t0) + "ms");
             return d;
@@ -528,6 +536,8 @@ public final class Cloud {
         t0 = System.currentTimeMillis();
         try {
             JSONObject d = fetchVersionFromCdn();
+            d.put("_source", "cdn");
+            lastVersionInfo = d;
             DebugLog.add("版本检查[CDN] 成功 → " + d.optString("versionName")
                     + "，" + (System.currentTimeMillis() - t0) + "ms");
             return d;
@@ -539,6 +549,8 @@ public final class Cloud {
         t0 = System.currentTimeMillis();
         try {
             JSONObject d = fetchVersionFromServer();
+            d.put("_source", "node");
+            lastVersionInfo = d;
             DebugLog.add("版本检查[节点API] 成功 → " + d.optString("versionName")
                     + "，" + (System.currentTimeMillis() - t0) + "ms");
             return d;
@@ -634,6 +646,9 @@ public final class Cloud {
     private static final String[] ALLOWED_APK_PREFIXES = {
         "https://github.com/OpenWTU/charging-crawler/releases/download/",
         "https://charge.lizishuo.cn/",
+        // jsDelivr 的仓库文件代理：发版时会把 APK 也提交到 deploy/app-debug.apk，
+        // 这样「从 CDN 拿到 version.json」的设备也能从 CDN 下包。
+        "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/",
     };
 
     private static boolean isAllowedApkUrl(String url) {
@@ -645,13 +660,95 @@ public final class Cloud {
     }
 
     /** 下载 APK 到 cacheDir，返回本地文件。 */
+    /**
+     * 下载 APK：按「与 version.json 相同的来源」优先，逐个通道重试。
+     *
+     * 顺序规则（用户要求）：
+     *   · GitHub 拿到 version.json → 先 GitHub，失败再 CDN、节点
+     *   · CDN 拿到 version.json    → 先 CDN，失败再 GitHub、节点
+     *   · 节点拿到 version.json    → **先试 GitHub 和 CDN**，都不行才用节点；全失败提示「更新源不可用」
+     *
+     * 每个候选都用同一个 sha256 校验，所以拿到旧包/坏包不会误装。
+     */
     public static File downloadApk(String apkPath, File cacheDir, String expectedSha) throws Exception {
-        String url = apkPath.startsWith("http") ? apkPath : base() + apkPath.replaceFirst("^/", "");
         if (expectedSha == null || !expectedSha.matches("[0-9a-fA-F]{64}")) {
             throw new IOException("缺少有效的 sha256，已拒绝下载");
         }
+        java.util.List<String> candidates = buildApkCandidates(apkPath);
+        StringBuilder sb = new StringBuilder();
+        for (String u : candidates) {
+            if (sb.length() > 0) sb.append(" → ");
+            sb.append(hostOf(u));
+        }
+        DebugLog.add("APK 下载候选(" + candidates.size() + "): " + sb);
+
+        Exception last = null;
+        for (String u : candidates) {
+            try {
+                File f = downloadApkFrom(u, cacheDir, expectedSha);
+                DebugLog.add("APK 下载成功[" + hostOf(u) + "]: " + f.length() + "B");
+                return f;
+            } catch (Exception e) {
+                last = e;
+                DebugLog.add("APK 下载失败[" + hostOf(u) + "]: " + e.getMessage());
+            }
+        }
+        throw new IOException("更新源不可用：GitHub / CDN / 节点均无法下载安装包"
+                + (last == null ? "" : "（最后错误：" + last.getMessage() + "）"));
+    }
+
+    /** 候选列表：与 version.json 来源一致者优先，其余按 GitHub → CDN → 节点 补齐。 */
+    private static java.util.List<String> buildApkCandidates(String apkPath) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        JSONObject info = lastVersionInfo;
+        String source = info == null ? "" : info.optString("_source", "");
+        String name = info == null ? "" : info.optString("versionName", "").trim();
+
+        String github = name.isEmpty() ? ""
+                : "https://github.com/OpenWTU/charging-crawler/releases/download/v"
+                + name + "/app-debug.apk";
+        String cdn = "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/app-debug.apk";
+        String node = base() + "download/app-debug.apk";
+
+        // ① 首选：与获取 version.json 的通道一致
+        if ("github".equals(source) && !github.isEmpty()) {
+            out.add(github);
+        } else if ("cdn".equals(source)) {
+            out.add(cdn);
+        } else if ("node".equals(source)) {
+            // 节点拿到 version.json 时，先试 GitHub 与 CDN（节点自身反而放最后）
+            if (!github.isEmpty()) out.add(github);
+            out.add(cdn);
+            out.add(node);
+        }
+
+        // ② 前端传来的地址也纳入（可能带 ?v= 查询串）
+        if (apkPath != null && !apkPath.isEmpty()) {
+            String u = apkPath.startsWith("http") ? apkPath : base() + apkPath.replaceFirst("^/", "");
+            if (!out.contains(u)) out.add(u);
+        }
+
+        // ③ 其余通道补齐
+        for (String u : new String[]{github, cdn, node}) {
+            if (u != null && !u.isEmpty() && !out.contains(u)) out.add(u);
+        }
+        return out;
+    }
+
+    /** 日志用的主机名（便于看出走的哪条通道）。 */
+    private static String hostOf(String url) {
+        try {
+            String h = new java.net.URL(url).getHost();
+            return h == null ? "?" : h;
+        } catch (Exception e) {
+            return "?";
+        }
+    }
+
+    /** 从单个地址下载并校验 sha256。 */
+    private static File downloadApkFrom(String url, File cacheDir, String expectedSha) throws Exception {
         if (!isAllowedApkUrl(url)) {
-            throw new IOException("非法的安装包地址（只允许官方域名与 GitHub Release）");
+            throw new IOException("非法的安装包地址（只允许官方域名 / GitHub Release / jsDelivr）");
         }
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(15000);

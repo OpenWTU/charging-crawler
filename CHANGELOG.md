@@ -6,6 +6,36 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.5.3] - 2026-11-09
+
+### APK 下载改为「跟随版本源 + 多通道重试」
+原来不管 version.json 从哪条通道拿到，`apkPath` 都指向同一个地址。现在按用户要求：
+
+| version.json 来源 | APK 下载顺序 |
+|---|---|
+| GitHub Releases API | GitHub → CDN → 节点 |
+| jsDelivr CDN | CDN → GitHub → 节点 |
+| 节点 `/api/version` | **先 GitHub → CDN**，都不行才用节点 |
+
+全部通道都失败时，提示「**更新源不可用**：GitHub / CDN / 节点均无法下载安装包」，
+并把最后一个错误带出来。
+
+**实现要点**：
+- `fetchVersion()` 给结果打 `_source` 标记（github/cdn/node）并缓存到 `lastVersionInfo`
+- `downloadApk()` 由单地址改为**候选列表逐个重试**，每个候选都用同一个 sha256 校验
+  （拿到旧包/坏包不会误装，自动跳到下一个通道）
+- 日志逐通道打印：`APK 下载候选(3): github.com → cdn.jsdelivr.net → charge.lizishuo.cn`，
+  以及每次成功/失败（含主机名与耗时）
+- 白名单新增 `https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/`
+
+**前置改动：APK 也进仓库**
+jsDelivr 只能代理**仓库文件**，Release 附件它取不到 —— 所以 CDN 通道原本**无包可下**。
+现在发版时把 APK 同步进 `deploy/app-debug.apk`（476KB），CDN 通道才真的可用。
+`.gitignore` 加了 `!deploy/app-debug.apk` 例外（原本 `*.apk` 会把它一起忽略）。
+
+`scripts/sync-release-version.py` 相应扩展：下载 APK → 校验 sha256 与 version.json 一致
+→ 一起提交 → 分别 purge `version.json` 和 `app-debug.apk` 两个 CDN 路径。
+
 ## [v2.5.2] - 2026-11-09
 
 ### 把 version.json 同步从 CI 挪到本地脚本

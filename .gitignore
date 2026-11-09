@@ -2,6 +2,8 @@
 android/build/
 android/app/build/
 *.apk
+# 例外：发版时同步进仓库的安装包，供 jsDelivr CDN 通道下载
+!deploy/app-debug.apk
 *.idsig
 *.keystore
 # python（仅 android/build.py 构建脚本）

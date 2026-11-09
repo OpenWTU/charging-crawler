@@ -14,6 +14,10 @@ App 的「检查更新」是三层降级：GitHub Releases API → jsDelivr CDN 
   ② jsDelivr 对 `@main` 这类分支引用**缓存 12 小时**，光提交不会立刻生效，
      必须调 purge 接口主动刷新，否则 App 走 CDN 会拿到上一个版本。
 
+**同时把 APK 也同步进 `deploy/app-debug.apk`**：jsDelivr 只能代理仓库文件，
+Release 附件它取不到。App 的下载逻辑是「version.json 从哪个通道拿到，就优先从哪个
+通道下包」，所以 CDN 通道必须仓库里真的有包可下。
+
 用法
 ----
     python3 scripts/sync-release-version.py v2.5.1
@@ -54,6 +58,19 @@ def git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
                           capture_output=True, cwd=TARGET.parent.parent)
 
 
+def purge_one(name: str) -> None:
+    """purge 单个文件；失败只提示，不影响主流程。"""
+    purge = f"https://purge.jsdelivr.net/gh/{REPO}@main/deploy/{name}"
+    try:
+        body = http_text(purge, timeout=30)
+        j = json.loads(body)
+        print(f"  {name}: HTTP 200 status={j.get('status')} providers={j.get('providers')}")
+        if j.get("status") != "finished":
+            print(f"  ⚠ {name} purge 未完成，CDN 可能要等缓存自然过期（最多 12h）")
+    except Exception as e:  # noqa: BLE001
+        print(f"  ⚠ {name} purge 失败：{e}（CDN 最多等 12h 自然过期）")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("tag", help="要同步的 tag，例如 v2.5.1")
@@ -84,13 +101,38 @@ def main() -> int:
     TARGET.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"  {TARGET.stat().st_size} B")
 
+    # ---- 2.5) 同步 APK 到 deploy/app-debug.apk（供 CDN 通道下载）----
+    apk_target = TARGET.parent / "app-debug.apk"
+    apk_asset = next((a for a in rel.get("assets", []) if a.get("name") == "app-debug.apk"), None)
+    if not apk_asset:
+        print("  ⚠ Release 里没有 app-debug.apk，跳过（CDN 通道将无法下载，只能走 GitHub/节点）")
+    else:
+        print(f"[2.5] 下载 APK → {apk_target.name} …")
+        try:
+            req = urllib.request.Request(apk_asset["browser_download_url"], headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                blob = r.read()
+            apk_target.write_bytes(blob)
+            import hashlib
+            got = hashlib.sha256(blob).hexdigest()
+            want = str(data.get("sha256") or "")
+            ok = (got == want)
+            print(f"  {len(blob)} B  sha256={got[:24]}…  {'✓ 与 version.json 一致' if ok else '✗ 与 version.json 不一致！'}")
+            if not ok:
+                print("  ✗ APK 校验失败，终止（避免把坏包提交进仓库）")
+                return 1
+        except Exception as e:  # noqa: BLE001
+            print(f"  ✗ APK 下载失败：{e}")
+            return 1
+
     # ---- 3) git commit + push ----
     if args.no_push:
         print("[3/4] 跳过提交（--no-push）")
     else:
         print("[3/4] 提交并推送 …")
-        rel_path = "deploy/version.json"
-        git("add", rel_path)
+        git("add", "deploy/version.json")
+        if apk_target.exists():
+            git("add", "deploy/app-debug.apk")
         # 无变化就别提交
         diff = git("diff", "--cached", "--quiet", check=False)
         if diff.returncode == 0:
@@ -107,7 +149,9 @@ def main() -> int:
         print("[4/4] 跳过 purge（--no-purge）")
     else:
         print("[4/4] purge jsDelivr 缓存 …")
-        purge = f"https://purge.jsdelivr.net/gh/{REPO}@main/deploy/version.json"
+        # 一次 purge 目录下两个文件（jsDelivr 支持对单个 URL purge，逐个调）
+        for f in ("version.json", "app-debug.apk"):
+            purge_one(f)
         try:
             body = http_text(purge, timeout=30)
             j = json.loads(body)
