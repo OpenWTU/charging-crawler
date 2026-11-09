@@ -1,11 +1,11 @@
 {
-  "versionCode": 2005007,
-  "versionName": "2.5.7",
-  "apkPath": "https://charge.lizishuo.cn/download/app-v2.5.7.apk?v=2005007",
+  "versionCode": 2005008,
+  "versionName": "2.5.8",
+  "apkPath": "https://charge.lizishuo.cn/download/app-v2.5.8.apk?v=2005008",
   "sizeText": "468K",
-  "sha256": "cf5a66ebb088c23f35bab425c60da5be99cb76f4f3f9918a90c07cf79dacec08",
-  "releasedAt": "2026-11-09 11:20",
+  "sha256": "eeeb557cb11da13f534a3e36c9492e1edd26cca47336e87121ae40c46e842caa",
+  "releasedAt": "2026-11-09 11:43",
   "changelog": [
-    "fix(android): GitHub 下载通道 404（v2.5.5 改名时漏改）"
+    "fix(android): 修版本检查返回旧版本（CDN 7 天缓存 + apkPath 改写 + 不降级）"
   ]
 }
