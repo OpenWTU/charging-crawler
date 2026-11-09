@@ -31,3 +31,6 @@ shots/app-token*
 # M9: assets/www 由 android/build.py 每次从 webui/dist 重新生成（跟踪它会让仓库里存旧前端，
 # 且每次构建都产生一大片脏工作区）
 android/app/src/main/assets/www/
+
+# 删除操作前的备份（含 Release/tag 清单），不进仓库
+.backup/
