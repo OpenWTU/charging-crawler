@@ -71,8 +71,10 @@ fi
 # 若容器更新失败并回滚镜像，version.json 仍指向新版 → App 会被引导"升级"到新 APK 配旧服务端。
 # 回滚分支必须同时回滚 version.json/APK（或接受这个短暂不一致）。
 
+# 版本名（v2.5.5 → 2.5.5）：APK 资产名带版本，避免不同版本互相覆盖 / 被缓存串版本
+VER="${TAG#v}"
 VERSION_JSON_URL="https://github.com/OpenWTU/charging-crawler/releases/download/$TAG/version.json"
-APK_URL="https://github.com/OpenWTU/charging-crawler/releases/download/$TAG/app-debug.apk"
+APK_URL="https://github.com/OpenWTU/charging-crawler/releases/download/$TAG/app-v$VER.apk"
 DATA_DIR="${DATA_DIR:-/var/lib/charge-cloud}"
 mkdir -p "$DATA_DIR/download"
 if curl -fsSL --max-time 20 -o /tmp/version.json.new "$VERSION_JSON_URL"; then
@@ -84,8 +86,18 @@ if curl -fsSL --max-time 20 -o /tmp/version.json.new "$VERSION_JSON_URL"; then
 else
   log "version.json 下载失败（跳过，保持现有）"
 fi
-if curl -fsSL --max-time 120 -o "$DATA_DIR/download/app-debug.apk" "$APK_URL"; then
+if curl -fsSL --max-time 120 -o "$DATA_DIR/download/app-v$VER.apk" "$APK_URL"; then
+  chown 33:33 "$DATA_DIR/download/app-v$VER.apk" 2>/dev/null || true
+  # 兼容副本：≤v2.5.3 的旧 App 仍按 /download/app-debug.apk 下载，
+  # 保留一份同名副本，避免老设备更新时 404。
+  cp -f "$DATA_DIR/download/app-v$VER.apk" "$DATA_DIR/download/app-debug.apk" 2>/dev/null || true
   chown 33:33 "$DATA_DIR/download/app-debug.apk" 2>/dev/null || true
+  # 清理旧版本的带版本名 APK（只留当前 + app-debug.apk 兼容副本）
+  for old_apk in "$DATA_DIR"/download/app-v*.apk; do
+    [ -e "$old_apk" ] || continue
+    [ "$old_apk" = "$DATA_DIR/download/app-v$VER.apk" ] && continue
+    rm -f "$old_apk"
+  done
   log "APK 已同步到本地 download（$TAG）"
 else
   log "APK 下载失败（跳过，App 将沿用旧包）"

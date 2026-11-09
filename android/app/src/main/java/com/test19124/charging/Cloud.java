@@ -719,7 +719,10 @@ public final class Cloud {
         String cdnMain = "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/app-v"
                 + (name.isEmpty() ? "debug" : name) + ".apk";
         String cdn = cdnTag.isEmpty() ? cdnMain : cdnTag;
-        String node = base() + "download/app-debug.apk";
+        // 节点上的 APK 也带版本名（服务器同时保留 app-debug.apk 兼容副本给旧版 App）
+        String node = name.isEmpty()
+                ? base() + "download/app-debug.apk"
+                : base() + "download/app-v" + name + ".apk";
 
         // ① 首选：与获取 version.json 的通道一致
         if ("github".equals(source) && !github.isEmpty()) {
@@ -739,8 +742,9 @@ public final class Cloud {
             if (!out.contains(u)) out.add(u);
         }
 
-        // ③ 其余通道补齐（cdnTag → cdnMain → 节点）
-        for (String u : new String[]{github, cdnTag, cdnMain, node}) {
+        // ③ 其余通道补齐（cdnTag → cdnMain → 节点带版本 → 节点兼容副本）
+        String nodeCompat = base() + "download/app-debug.apk";
+        for (String u : new String[]{github, cdnTag, cdnMain, node, nodeCompat}) {
             if (u != null && !u.isEmpty() && !out.contains(u)) out.add(u);
         }
         return out;

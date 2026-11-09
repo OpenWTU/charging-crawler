@@ -6,6 +6,35 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.5.5] - 2026-11-09
+
+### APK 全链路带版本号，彻底避开缓存串版本
+原来只有仓库/CDN 那一份带版本，其余环节都是固定名 `app-debug.apk`。现在整条链都带版本：
+
+| 环节 | 改前 | 改后 |
+|---|---|---|
+| `build.py` 产物 | `app-debug.apk` | **`app-v2.5.5.apk`** |
+| GitHub Release 资产 | `app-debug.apk` | **`app-v2.5.5.apk`** |
+| `version.json` 的 `apkPath` | `/download/app-debug.apk?v=` | **`/download/app-v2.5.5.apk?v=`** |
+| `update-node.sh` 下载 | `app-debug.apk` | **`app-v2.5.5.apk`** |
+| 仓库/CDN | `app-v2.5.5.apk` | 不变（v2.5.4 已改） |
+| App 节点通道 URL | `/download/app-debug.apk` | **`/download/app-v2.5.5.apk`** |
+
+**为什么值得全链路改**：固定名 + `?v=` 查询参数在很多缓存层（CDN / 中间代理 / Android
+DownloadManager）**不一定被当成不同资源**，仍然可能拿到旧包；文件名带版本是唯一可靠的
+区分方式。
+
+**兼容旧版 App**（≤v2.5.3，它们只会请求 `/download/app-debug.apk`）：
+`update-node.sh` 下载带版本名的包之后，**额外复制一份 `app-debug.apk`**，
+老设备更新时不会 404。同时自动清理服务器上旧版本的 `app-v*.apk`，只保留当前版本 + 兼容副本。
+
+**服务器路由无需改动**：`static.ts` 的 `/download/:name` 本来就按动态文件名服务，
+只要求匹配 `^[A-Za-z0-9._-]+\.apk$` —— `app-v2.5.5.apk` 正好符合。
+
+App 端下载候选顺序（全带版本）：
+`GitHub Release app-v<ver>.apk` → `CDN @cdn-v<ver>/deploy/app-v<ver>.apk` →
+`CDN @main/deploy/app-v<ver>.apk` → `节点 /download/app-v<ver>.apk` → `节点 /download/app-debug.apk`（兼容）
+
 ## [v2.5.4] - 2026-11-09
 
 ### APK 的 CDN 引用改用不可变 tag + 文件名带版本

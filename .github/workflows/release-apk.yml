@@ -105,13 +105,13 @@ jobs:
 
       - name: 校验 APK 产物
         run: |
-          ls -lh android/build/app-debug.apk
-          sha256sum android/build/app-debug.apk
+          ls -lh "android/build/app-v${VERSION_NAME}.apk"
+          sha256sum "android/build/app-v${VERSION_NAME}.apk"
 
       - name: 生成 version.json（供服务器自动同步）
         run: |
-          SHA=$(sha256sum android/build/app-debug.apk | cut -d' ' -f1)
-          SIZE=$(du -h android/build/app-debug.apk | cut -f1)
+          SHA=$(sha256sum "android/build/app-v${VERSION_NAME}.apk" | cut -d' ' -f1)
+          SIZE=$(du -h "android/build/app-v${VERSION_NAME}.apk" | cut -f1)
           python3 - "$VERSION_CODE" "$VERSION_NAME" "$SHA" "$SIZE" <<'PY'
           import json, subprocess, sys
           code, name, sha, size = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
@@ -143,7 +143,7 @@ jobs:
           d = {
               "versionCode": int(code),
               "versionName": name,
-              "apkPath": "/download/app-debug.apk?v=" + code,
+              "apkPath": "/download/app-v" + name + ".apk?v=" + code,
               "sizeText": size,
               "sha256": sha,
               "releasedAt": subprocess.check_output(["date", "+%Y-%m-%d %H:%M"], text=True, encoding="utf-8").strip(),
@@ -158,7 +158,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            android/build/app-debug.apk
+            android/build/app-v${{ env.VERSION_NAME }}.apk
             version.json
           generate_release_notes: true
 

@@ -196,7 +196,9 @@ def main():
     pw = cfg["storePassword"]
     if not keystore.exists():
         raise SystemExit(f"签名文件不存在: {keystore}")
-    apk = BUILD / "app-debug.apk"
+    # 产物名带版本号：不同版本互不覆盖，下载/缓存都不会串版本
+    # （VERSION_NAME 由 CI 从 tag 派生，本地构建时用 CHARGE_VERSION_NAME 或默认值）
+    apk = BUILD / f"app-v{VERSION_NAME}.apk"
     run([APKSIGNER, "sign", "--ks", keystore, "--ks-pass", f"pass:{pw}",
          "--key-pass", f"pass:{pw}", "--ks-key-alias", alias,
          "--out", apk, BUILD / "aligned.apk"])
