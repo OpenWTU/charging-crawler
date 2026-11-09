@@ -140,28 +140,6 @@ jobs:
           PY
           cat version.json
 
-      - name: 把 version.json 同步到 main（供 jsDelivr 走 CDN 兜底）
-        # version.json 平时只作为 Release asset 存在，而 jsDelivr 只能代理「仓库里的文件」，
-        # 代理不了 Release 附件。这里顺手把它提交回 main，App 就能在服务器不可达时
-        # 从 cdn.jsdelivr.net 拿到同一份版本信息（见 Cloud.fetchVersionFromCdn）。
-        # 提交信息带 [skip ci]：ci.yml 监听 push main，不加会被自己触发一轮。
-        run: |
-          set -e
-          mkdir -p deploy
-          cp version.json deploy/version.json
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main --depth=1
-          git checkout -B main origin/main
-          cp version.json deploy/version.json
-          git add deploy/version.json
-          if git diff --cached --quiet; then
-            echo "deploy/version.json 无变化，跳过提交"
-            exit 0
-          fi
-          git commit -m "chore(release): 同步 deploy/version.json 到 main [skip ci]"
-          git push origin main
-
       - name: 发布 Release（上传 APK + version.json）
         uses: softprops/action-gh-release@v2
         with:
@@ -169,3 +147,57 @@ jobs:
             android/build/app-debug.apk
             version.json
           generate_release_notes: true
+
+      # 把 version.json 也放进仓库，供 jsDelivr 走 CDN（App 在服务器不可达时取它）。
+      # 放在 Release 之后 + continue-on-error：发版是主线，这一步只是锦上添花，
+      # 绝不能因为它失败而让 APK/Release 发不出去（v2.4.26 就是踩了这个坑）。
+      # 用 REST API 提交而不是 git checkout/commit：tag 构建是 detached HEAD + 浅克隆，
+      # 改工作区容易出问题。
+      - name: 同步 deploy/version.json 到 main（失败不影响发版）
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, urllib.request, urllib.error
+
+          token = os.environ["GH_TOKEN"]
+          repo = os.environ.get("GITHUB_REPOSITORY", "OpenWTU/charging-crawler")
+          path = "deploy/version.json"
+          api = f"https://api.github.com/repos/{repo}/contents/{path}"
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "User-Agent": "charge-ci",
+              "Accept": "application/vnd.github+json",
+          }
+
+          content = base64.b64encode(open("version.json", "rb").read()).decode("utf-8")
+
+          sha = None
+          try:
+              req = urllib.request.Request(api, headers=headers)
+              sha = json.load(urllib.request.urlopen(req, timeout=20)).get("sha")
+          except urllib.error.HTTPError as e:
+              if e.code != 404:
+                  print("读取现有文件失败（继续按新建处理）:", e.code)
+
+          body = {
+              "message": "chore(release): 同步 deploy/version.json [skip ci]",
+              "content": content,
+              "branch": "main",
+          }
+          if sha:
+              body["sha"] = sha
+
+          req = urllib.request.Request(
+              api,
+              data=json.dumps(body).encode("utf-8"),
+              headers={**headers, "Content-Type": "application/json"},
+              method="PUT",
+          )
+          try:
+              r = urllib.request.urlopen(req, timeout=30)
+              print("deploy/version.json 已更新，HTTP", r.status)
+          except urllib.error.HTTPError as e:
+              print("更新失败（不影响发版）:", e.code, e.read()[:200])
+          PY

@@ -6,7 +6,34 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
-## [v2.4.25] - 2026-11-09
+## [v2.4.27] - 2026-11-09
+
+### 修复：CI 里「同步 deploy/version.json」步骤会拖垮发版
+v2.4.26 的 `release-apk` 卡在这一步：
+
+```
+OK  构建 APK
+OK  生成 version.json
+XX  把 version.json 同步到 main（供 jsDelivr 走 CDN 兜底）
+--  发布 Release（上传 APK + version.json）   ← 被跳过
+```
+
+原因：那一步用 `git fetch/checkout -B main` 改工作区，而 tag 构建是 **detached HEAD + 浅克隆**，
+操作工作区容易失败；**且它排在「发布 Release」之前**，一失败就把 APK 发布也带走了。
+
+**修法**：
+1. **移到「发布 Release」之后** —— 发版是主线，不能被附属步骤阻塞
+2. **`continue-on-error: true`** —— 即使失败也不影响发版
+3. **改用 GitHub REST API 提交**（`PUT /contents/deploy/version.json`），完全不碰 git 工作区
+
+### 附带说明：v2.4.24/25 的 tag 没触发 CI，不是配置问题
+排查结论（已实测）：
+- `release-image.yml` 那次也没触发，而它从未被改动过 → 不是 `release-apk.yml` 改动引起
+- 同一时段 `main` 分支的 push 也没触发 `ci`（`06:48:34` 之后直接跳到 `07:31:54`）
+- `startup_failure` 计数为 0，GitHub 未拒绝 workflow 文件
+- 之后重新推 `v2.4.26`，**两个 workflow 立刻正常触发** → 属于 GitHub 侧临时故障，已恢复
+
+
 
 ### GitHub 访问统一成三级降级：GitHub → CDN → 节点 API
 `api.github.com` 在国内经常整段阻断，原来 App 的「检查更新」和「节点发现」都以它为起点，
