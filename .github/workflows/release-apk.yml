@@ -158,46 +158,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 - <<'PY'
-          import base64, json, os, urllib.request, urllib.error
-
-          token = os.environ["GH_TOKEN"]
-          repo = os.environ.get("GITHUB_REPOSITORY", "OpenWTU/charging-crawler")
-          path = "deploy/version.json"
-          api = f"https://api.github.com/repos/{repo}/contents/{path}"
-          headers = {
-              "Authorization": f"Bearer {token}",
-              "User-Agent": "charge-ci",
-              "Accept": "application/vnd.github+json",
-          }
-
-          content = base64.b64encode(open("version.json", "rb").read()).decode("utf-8")
-
-          sha = None
-          try:
-              req = urllib.request.Request(api, headers=headers)
-              sha = json.load(urllib.request.urlopen(req, timeout=20)).get("sha")
-          except urllib.error.HTTPError as e:
-              if e.code != 404:
-                  print("读取现有文件失败（继续按新建处理）:", e.code)
-
-          body = {
-              "message": "chore(release): 同步 deploy/version.json [skip ci]",
-              "content": content,
-              "branch": "main",
-          }
-          if sha:
-              body["sha"] = sha
-
-          req = urllib.request.Request(
-              api,
-              data=json.dumps(body).encode("utf-8"),
-              headers={**headers, "Content-Type": "application/json"},
-              method="PUT",
-          )
-          try:
-              r = urllib.request.urlopen(req, timeout=30)
-              print("deploy/version.json 已更新，HTTP", r.status)
-          except urllib.error.HTTPError as e:
-              print("更新失败（不影响发版）:", e.code, e.read()[:200])
-          PY
+          # 用 gh CLI 而不是 heredoc 里的 Python：`run: |` 会把前导空格原样传进 stdin，
+          # python3 - <<'PY' 的缩进会被算进代码里，直接 IndentationError（v2.4.27 就踩了）。
+          B64=$(base64 -w 0 version.json)
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/deploy/version.json" --jq .sha 2>/dev/null || true)
+          echo "现有 deploy/version.json sha=${SHA:-（不存在，将新建）}"
+          if [ -n "$SHA" ]; then
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/deploy/version.json" \
+              -f message="chore(release): 同步 deploy/version.json [skip ci]" \
+              -f content="$B64" -f branch=main -f sha="$SHA"
+          else
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/deploy/version.json" \
+              -f message="chore(release): 同步 deploy/version.json [skip ci]" \
+              -f content="$B64" -f branch=main
+          fi
+          echo "deploy/version.json 已同步"

@@ -6,7 +6,27 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
-## [v2.4.27] - 2026-11-09
+## [v2.4.28] - 2026-11-09
+
+### 修复：同步 deploy/version.json 的步骤仍在静默失败
+v2.4.27 把它移到 Release 之后并加了 `continue-on-error`，发版不再被它拖垮，
+但它本身**还是失败了**（被 continue-on-error 掩盖），`deploy/version.json` 停在 2.4.24。
+
+原因：我用 `run: |` + `python3 - <<'PY'` 的 heredoc 写脚本。`run: |` 会把**前导空格原样**
+传给 stdin，Python 收到的代码带着缩进 → `IndentationError`。
+
+**改用 `gh` CLI**（ubuntu runner 预装，自带 `GH_TOKEN` 环境）：
+
+```bash
+B64=$(base64 -w 0 version.json)
+SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/deploy/version.json" --jq .sha || true)
+gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/deploy/version.json" \
+  -f message="..." -f content="$B64" -f branch=main ${SHA:+-f sha=$SHA}
+```
+
+不再有 heredoc、不再碰 git 工作区。
+
+
 
 ### 修复：CI 里「同步 deploy/version.json」步骤会拖垮发版
 v2.4.26 的 `release-apk` 卡在这一步：
