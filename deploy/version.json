@@ -1,11 +1,14 @@
 {
-  "versionCode": 2004021,
-  "versionName": "2.4.21",
-  "apkPath": "/download/app-debug.apk?v=2004021",
-  "sizeText": "468K",
-  "sha256": "409743385c97ce25d3c458b8215545ec2d2724cbfc6e6f96e19507dea992ebea",
-  "releasedAt": "2026-11-08 07:38",
+  "versionCode": 2004024,
+  "versionName": "2.4.24",
+  "apkPath": "/download/app-debug.apk?v=2004024",
+  "sizeText": "466K",
+  "sha256": "063330301ca2e105ab03111fab0e196a3edcdea2c127774e10b05abafe5fcd2d",
+  "releasedAt": "2026-11-09 15:27",
   "changelog": [
-    "fix(android): 状态栏跟随深色 —— 补 FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS"
+    "GitHub 访问统一三级降级：GitHub → CDN → 节点 API，每源都有日志",
+    "新增服务端 /api/nodes.json 代理（App 不依赖 GitHub 也能拿节点目录）",
+    "加载/刷新时统计条改骨架占位，清单骨架跟随刷新态",
+    "App 回前台重读系统深浅色（修切深色不生效）"
   ]
 }
