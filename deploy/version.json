@@ -1,11 +1,11 @@
 {
-  "versionCode": 2005005,
-  "versionName": "2.5.5",
-  "apkPath": "/download/app-v2.5.5.apk?v=2005005",
+  "versionCode": 2005006,
+  "versionName": "2.5.6",
+  "apkPath": "https://charge.lizishuo.cn/download/app-v2.5.6.apk?v=2005006",
   "sizeText": "468K",
-  "sha256": "fcb5fa495822bf2eea6b27bfa3cade9737abb981096ddf7937239179b5e84573",
-  "releasedAt": "2026-11-09 10:04",
+  "sha256": "9fc19eb48ea9fe232f04abb9c9de912f7b9e09ae9f2e55cd60182a413fa94a95",
+  "releasedAt": "2026-11-09 11:11",
   "changelog": [
-    "feat(release): APK 全链路带版本号，彻底避开缓存串版本"
+    "fix(android): APK 候选顺序修正 + apkPath 绝对化"
   ]
 }
