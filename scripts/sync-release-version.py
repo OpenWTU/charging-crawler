@@ -14,9 +14,19 @@ App 的「检查更新」是三层降级：GitHub Releases API → jsDelivr CDN 
   ② jsDelivr 对 `@main` 这类分支引用**缓存 12 小时**，光提交不会立刻生效，
      必须调 purge 接口主动刷新，否则 App 走 CDN 会拿到上一个版本。
 
-**同时把 APK 也同步进 `deploy/app-debug.apk`**：jsDelivr 只能代理仓库文件，
+**同时把 APK 也同步进 `deploy/app-v<version>.apk`**（文件名带版本，旧版本自动清理）：
+jsDelivr 只能代理仓库文件，
 Release 附件它取不到。App 的下载逻辑是「version.json 从哪个通道拿到，就优先从哪个
 通道下包」，所以 CDN 通道必须仓库里真的有包可下。
+
+**再打一个 `cdn-v<version>` tag**：App 下载 APK 时用**不可变引用**
+`cdn.jsdelivr.net/gh/.../@cdn-v2.5.3/deploy/app-debug.apk`，而不是 `@main`。
+
+- `@main` 是分支引用 → jsDelivr **缓存 12 小时**且内容会变 → 必须每次 purge
+- `@cdn-v2.5.3` 是 tag 引用 → **不可变、永久缓存** → 不用 purge，且不会出现
+  「CDN 上是上一个版本的包」这种问题
+- 为什么不直接用 `v2.5.3`：那个 tag 指向发版时的 commit，而 APK 是**发版后**才提交的，
+  tag 里没有这个文件 → 会 404。`cdn-v` 前缀同时避开了 workflow 的 `tags: ['v*']` 触发。
 
 用法
 ----
@@ -101,13 +111,19 @@ def main() -> int:
     TARGET.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"  {TARGET.stat().st_size} B")
 
-    # ---- 2.5) 同步 APK 到 deploy/app-debug.apk（供 CDN 通道下载）----
-    apk_target = TARGET.parent / "app-debug.apk"
+    # ---- 2.5) 同步 APK 到 deploy/app-v<version>.apk（供 CDN 通道下载）----
+    # 文件名带版本号：
+    #   · CDN 上不同版本互不覆盖，`@cdn-v2.5.3/deploy/app-v2.5.3.apk` 语义自解释
+    #   · 排查时一眼能看出某个 URL 是哪个版本的包
+    # 只保留最新一份：旧的 app-v*.apk 在提交前删掉，避免仓库里堆一堆 476KB 二进制。
+    ver = str(data.get("versionName") or "").strip()
+    apk_name = f"app-v{ver}.apk" if ver else "app-debug.apk"
+    apk_target = TARGET.parent / apk_name
     apk_asset = next((a for a in rel.get("assets", []) if a.get("name") == "app-debug.apk"), None)
     if not apk_asset:
         print("  ⚠ Release 里没有 app-debug.apk，跳过（CDN 通道将无法下载，只能走 GitHub/节点）")
     else:
-        print(f"[2.5] 下载 APK → {apk_target.name} …")
+        print(f"[2.5] 下载 APK → deploy/{apk_name} …")
         try:
             req = urllib.request.Request(apk_asset["browser_download_url"], headers={"User-Agent": UA})
             with urllib.request.urlopen(req, timeout=120) as r:
@@ -121,6 +137,19 @@ def main() -> int:
             if not ok:
                 print("  ✗ APK 校验失败，终止（避免把坏包提交进仓库）")
                 return 1
+
+            # 清理旧版本的 APK（含早期固定名 app-debug.apk）
+            removed = []
+            for old in list(TARGET.parent.glob("app-v*.apk")) + [TARGET.parent / "app-debug.apk"]:
+                if old.exists() and old.resolve() != apk_target.resolve():
+                    try:
+                        git("rm", "--cached", "--ignore-unmatch", "-q", str(old.relative_to(TARGET.parent.parent)), check=False)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    old.unlink()
+                    removed.append(old.name)
+            if removed:
+                print(f"  已清理旧版本 APK：{', '.join(removed)}")
         except Exception as e:  # noqa: BLE001
             print(f"  ✗ APK 下载失败：{e}")
             return 1
@@ -130,9 +159,9 @@ def main() -> int:
         print("[3/4] 跳过提交（--no-push）")
     else:
         print("[3/4] 提交并推送 …")
-        git("add", "deploy/version.json")
+        git("add", "-A", "deploy/")
         if apk_target.exists():
-            git("add", "deploy/app-debug.apk")
+            print(f"  将提交 deploy/{apk_name}")
         # 无变化就别提交
         diff = git("diff", "--cached", "--quiet", check=False)
         if diff.returncode == 0:
@@ -144,14 +173,29 @@ def main() -> int:
             git("push", "origin", "main")
             print("  已提交并推送")
 
+            # 打不可变 CDN 引用 tag（cdn-v 前缀不匹配 workflow 的 tags: ['v*']，不会触发 CI）
+            ver = str(data.get("versionName") or "").strip()
+            if ver:
+                cdn_tag = f"cdn-v{ver}"
+                print(f"[3.5] 打 CDN 引用 tag {cdn_tag} …")
+                git("tag", "-f", "-a", cdn_tag, "-m", f"CDN 引用：{tag} 的安装包与版本信息")
+                try:
+                    git("push", "-f", "origin", f"refs/tags/{cdn_tag}")
+                    print(f"  {cdn_tag} 已推送（App 将从 @{cdn_tag} 下载 APK，永久缓存无需 purge）")
+                except subprocess.CalledProcessError as e:
+                    print(f"  ⚠ {cdn_tag} 推送失败：{e.stderr or e}")
+            else:
+                print("  ⚠ version.json 里没有 versionName，跳过 cdn-v tag")
+
     # ---- 4) purge jsDelivr ----
     if args.no_purge:
         print("[4/4] 跳过 purge（--no-purge）")
     else:
         print("[4/4] purge jsDelivr 缓存 …")
         # 一次 purge 目录下两个文件（jsDelivr 支持对单个 URL purge，逐个调）
-        for f in ("version.json", "app-debug.apk"):
-            purge_one(f)
+        # APK 走 @cdn-v<version> 不可变引用，永久缓存，不需要 purge；
+        # 只有 version.json 在 @main 上，必须刷新。
+        purge_one("version.json")
 
     print()
     print(f"✅ 完成：{tag} 已同步到仓库，CDN 已请求刷新")

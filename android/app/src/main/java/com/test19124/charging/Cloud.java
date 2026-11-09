@@ -646,8 +646,11 @@ public final class Cloud {
     private static final String[] ALLOWED_APK_PREFIXES = {
         "https://github.com/OpenWTU/charging-crawler/releases/download/",
         "https://charge.lizishuo.cn/",
-        // jsDelivr 的仓库文件代理：发版时会把 APK 也提交到 deploy/app-debug.apk，
-        // 这样「从 CDN 拿到 version.json」的设备也能从 CDN 下包。
+        // jsDelivr 的仓库文件代理。APK 用**不可变 tag 引用** @cdn-v<version>：
+        //   · @main 是分支引用，jsDelivr 缓存 12h 且内容会变，必须每次 purge
+        //   · @cdn-v2.5.3 是 tag 引用，永久缓存且内容固定，不会拿到上一版的包
+        // 前缀只到仓库名，具体 ref 由 buildApkCandidates 拼（@cdn-v<version> 或 @main）。
+        "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@cdn-v",
         "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/",
     };
 
@@ -707,7 +710,15 @@ public final class Cloud {
         String github = name.isEmpty() ? ""
                 : "https://github.com/OpenWTU/charging-crawler/releases/download/v"
                 + name + "/app-debug.apk";
-        String cdn = "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/app-debug.apk";
+        // 主用不可变 tag 引用（永久缓存、不会拿到旧包）；@main 作为兜底
+        // （万一某个版本没打 cdn-v tag，tag 引用会 404，这时回落到 main）。
+        // 仓库里那份 APK 的文件名带版本号（app-v2.5.3.apk），旧版本由同步脚本清理
+        String cdnTag = name.isEmpty() ? ""
+                : "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@cdn-v"
+                + name + "/deploy/app-v" + name + ".apk";
+        String cdnMain = "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/app-v"
+                + (name.isEmpty() ? "debug" : name) + ".apk";
+        String cdn = cdnTag.isEmpty() ? cdnMain : cdnTag;
         String node = base() + "download/app-debug.apk";
 
         // ① 首选：与获取 version.json 的通道一致
@@ -728,8 +739,8 @@ public final class Cloud {
             if (!out.contains(u)) out.add(u);
         }
 
-        // ③ 其余通道补齐
-        for (String u : new String[]{github, cdn, node}) {
+        // ③ 其余通道补齐（cdnTag → cdnMain → 节点）
+        for (String u : new String[]{github, cdnTag, cdnMain, node}) {
             if (u != null && !u.isEmpty() && !out.contains(u)) out.add(u);
         }
         return out;
