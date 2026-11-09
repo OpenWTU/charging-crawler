@@ -119,9 +119,14 @@ def main() -> int:
     ver = str(data.get("versionName") or "").strip()
     apk_name = f"app-v{ver}.apk" if ver else "app-debug.apk"
     apk_target = TARGET.parent / apk_name
-    apk_asset = next((a for a in rel.get("assets", []) if a.get("name") == "app-debug.apk"), None)
+    # 资产名从 v2.5.5 起带版本（app-v<version>.apk）；老版本回落到 app-debug.apk
+    want_apk = f"app-v{ver}.apk" if ver else "app-debug.apk"
+    apk_asset = next((a for a in rel.get("assets", []) if a.get("name") == want_apk), None)
     if not apk_asset:
-        print("  ⚠ Release 里没有 app-debug.apk，跳过（CDN 通道将无法下载，只能走 GitHub/节点）")
+        apk_asset = next((a for a in rel.get("assets", []) if a.get("name") == "app-debug.apk"), None)
+    if not apk_asset:
+        names = ", ".join(a.get("name", "?") for a in rel.get("assets", []))
+        print(f"  ⚠ Release 里没有 {want_apk}，跳过（现有资产：{names}）")
     else:
         print(f"[2.5] 下载 APK → deploy/{apk_name} …")
         try:

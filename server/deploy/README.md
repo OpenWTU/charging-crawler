@@ -413,6 +413,20 @@ python3 scripts/sync-release-version.py vX.Y.Z
 - CI 里自动做试过 4 种写法全部失败（git checkout / heredoc Python / gh CLI / curl+jq），
   且拿不到 CI 日志，无法继续定位 —— 与其留个每次静默失败的步骤，不如手工做
 
+### ⚠️ 如果这次改动了 `update-node.sh` 本身
+
+`update-node.sh` **不在 Docker 镜像里**（Dockerfile 只 COPY 了 `dist` / `web` /
+`default-peers.json`），所以改仓库不会自动同步到节点，必须手工推送：
+
+```bash
+scp -i <key> server/deploy/update-node.sh root@<节点>:/opt/charge-node/update-node.sh
+ssh -i <key> root@<节点> "chmod +x /opt/charge-node/update-node.sh && md5sum /opt/charge-node/update-node.sh"
+# 与本地 md5 对比，不一致就重传 —— scp 在网络抖动时会静默失败，$? 仍是 0
+```
+
+**务必校验 md5**：2026-11-09 实测过一次 scp 静默失败（退出码 0 但文件没变），
+导致部署时用的还是旧脚本。
+
 ### 5. 部署到节点
 
 ```bash

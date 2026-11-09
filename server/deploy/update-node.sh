@@ -60,9 +60,12 @@ if ! docker pull "$IMAGE:$TAG"; then
   exit 1
 fi
 NEW_ID=$(docker inspect --format '{{.Id}}' "$IMAGE:$TAG" 2>/dev/null || echo "")
+# ⚠️ 这里**不能直接 exit**：version.json / APK 的同步排在后面，
+# 提前退出会导致「镜像没变但 APK 没同步」—— 重跑同一个 tag 时必然踩到（v2.5.5 实测）。
+NEED_REBUILD=1
 if [ "$NEW_ID" = "$OLD_ID" ]; then
-  log "镜像无变化，无需更新"
-  exit 0
+  log "镜像无变化，跳过容器重建（仍会同步 version.json / APK）"
+  NEED_REBUILD=0
 fi
 
 # 2.5 同步 version.json + APK（发版时 release-apk 会把两者作为 Release asset 发布）
@@ -103,38 +106,42 @@ else
   log "APK 下载失败（跳过，App 将沿用旧包）"
 fi
 
-# 3. 更新：新镜像 tag 到 latest（compose 统一用 latest），重建容器
-cd "$COMPOSE_DIR" || exit 1
-export DATA_DIR="${DATA_DIR:-/var/lib/charge-cloud}"
-docker tag "$IMAGE:$TAG" "$IMAGE:latest"
-if ! docker compose up -d 2>&1; then
-  log "重建失败，开始回退"
-  docker tag "$OLD_ID" "$IMAGE:latest"
-  docker compose up -d 2>&1 || log "!! 回退重建也失败，需人工介入"
-  log "已回退到旧镜像"
-  exit 1
-fi
-
-# 4. 健康检查（最多 45 秒）
-sleep 15
-OK=0
-for i in 1 2 3 4 5 6; do
-  if curl -sf --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
-    OK=1
-    break
+if [ "$NEED_REBUILD" = "1" ]; then
+  # 3. 更新：新镜像 tag 到 latest（compose 统一用 latest），重建容器
+  cd "$COMPOSE_DIR" || exit 1
+  export DATA_DIR="${DATA_DIR:-/var/lib/charge-cloud}"
+  docker tag "$IMAGE:$TAG" "$IMAGE:latest"
+  if ! docker compose up -d 2>&1; then
+    log "重建失败，开始回退"
+    docker tag "$OLD_ID" "$IMAGE:latest"
+    docker compose up -d 2>&1 || log "!! 回退重建也失败，需人工介入"
+    log "已回退到旧镜像"
+    exit 1
   fi
-  sleep 5
-done
 
-if [ "$OK" != "1" ]; then
-  log "健康检查失败，开始回退"
-  docker tag "$OLD_ID" "$IMAGE:latest"
-  docker compose up -d 2>&1 || log "!! 回退重建也失败，需人工介入"
-  sleep 5
-  log "已回退到旧镜像 ${OLD_ID:0:12}"
-  exit 1
+  # 4. 健康检查（最多 45 秒）
+  sleep 15
+  OK=0
+  for i in 1 2 3 4 5 6; do
+    if curl -sf --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
+      OK=1
+      break
+    fi
+    sleep 5
+  done
+
+  if [ "$OK" != "1" ]; then
+    log "健康检查失败，开始回退"
+    docker tag "$OLD_ID" "$IMAGE:latest"
+    docker compose up -d 2>&1 || log "!! 回退重建也失败，需人工介入"
+    sleep 5
+    log "已回退到旧镜像 ${OLD_ID:0:12}"
+    exit 1
+  fi
+
+  log "更新成功（新镜像 ${NEW_ID:0:12}），容器已重建"
+else
+  log "镜像未变：容器保持运行，version.json / APK 已按 $TAG 同步"
 fi
-
-log "更新成功（新镜像 ${NEW_ID:0:12}），容器已重建"
 log "==== 更新结束 ===="
 exit 0

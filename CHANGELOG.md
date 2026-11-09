@@ -6,6 +6,39 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.5.6] - 2026-11-09
+
+### 修 update-node.sh 两处会漏同步 APK 的问题
+全链路改名（v2.5.5）暴露了两个问题：
+
+**① 镜像无变化时脚本直接 `exit 0`，把 APK 同步跳过了**
+
+原逻辑：
+
+```bash
+if [ "$NEW_ID" = "$OLD_ID" ]; then
+  log "镜像无变化，无需更新"
+  exit 0            # ← version.json / APK 同步排在后面，永远执行不到
+fi
+# 2.5 同步 version.json + APK
+```
+
+重跑同一个 tag（或只改了 APK 没改镜像）时，APK 就永远同步不上。
+改成 `NEED_REBUILD=0` 标记 + 把第 3/4 步（重建 + 健康检查）包进 `if`，
+**同步照做、重建跳过**。
+
+**② `update-node.sh` 不在镜像里，改仓库不会自动同步到节点**
+
+Dockerfile 只 COPY `dist` / `web` / `default-peers.json`。所以改了这个脚本必须手工
+`scp` 到 `/opt/charge-node/`，而且**要校验 md5** —— 实测过一次 scp 静默失败
+（退出码 0 但文件没变），部署时用的还是旧脚本，排查了很久。
+
+已写进 `server/deploy/README.md` 的部署步骤。
+
+### 顺带
+`scripts/sync-release-version.py` 的资产查找改成优先 `app-v<version>.apk`，
+回落 `app-debug.apk`（v2.5.5 改名后旧写法找不到资产）。
+
 ## [v2.5.5] - 2026-11-09
 
 ### APK 全链路带版本号，彻底避开缓存串版本
