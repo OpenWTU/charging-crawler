@@ -37,6 +37,38 @@ v2.5.5 第一次跑同步脚本时，脚本还在找 `app-debug.apk`，而 Relea
 
 ## [v2.5.6] - 2026-11-09
 
+### APK 下载候选顺序修正 + apkPath 绝对化
+**问题**：`buildApkCandidates` 把 `apkPath` 插在了第 2 位，打乱了「GitHub → CDN → 节点」的主干顺序
+（只有「节点源」那种场景碰巧是对的）。实测日志：v2.4.24 手机从 CDN 拿到 version.json，
+却把 `apkPath` 改写成 GitHub 地址，GitHub 超时 15 秒后直接失败，没有任何回退。
+
+**① 候选顺序统一**（跟随来源 + 固定主干）
+
+| version.json 来源 | 候选顺序 |
+|---|---|
+| GitHub | GitHub → CDN(tag) → CDN(main) → 节点 → 节点兼容 → apkPath |
+| CDN | CDN(tag) → GitHub → CDN(main) → 节点 → 节点兼容 → apkPath |
+| 节点 | GitHub → CDN(tag) → CDN(main) → 节点 → 节点兼容 → apkPath |
+
+「跟随来源」保留（能拿到 342 B 的 version.json 的通道，通常也能拿 476 KB 的 APK），
+`apkPath` 固定放**最末位**兜底 —— 它通常与「节点」候选同址，只有当前连的是备用节点
+而 apkPath 指向主节点时才有独立价值。
+
+**② apkPath 绝对化**
+
+```
+改前  "apkPath": "/download/app-v2.5.6.apk?v=2005006"
+改后  "apkPath": "https://charge.lizishuo.cn/download/app-v2.5.6.apk?v=2005006"
+```
+
+为什么必须绝对化：**≤v2.5.5 的 App 只会把以 `/` 开头的 apkPath 改写成 GitHub 地址**
+（`if (apkPath.startsWith("/"))` → 换成 GitHub Release URL）。绝对 URL 不触发那段改写，
+于是旧版也能直接从节点下载，不会被 GitHub 卡死。
+
+两处都做：CI 生成 version.json 时直接写绝对 URL；`sync-release-version.py` 再兜底转换一次
+（万一 CI 是旧版本生成的）。
+
+
 ### 修 update-node.sh 两处会漏同步 APK 的问题
 全链路改名（v2.5.5）暴露了两个问题：
 

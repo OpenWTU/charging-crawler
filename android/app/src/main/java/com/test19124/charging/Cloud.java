@@ -666,10 +666,11 @@ public final class Cloud {
     /**
      * 下载 APK：按「与 version.json 相同的来源」优先，逐个通道重试。
      *
-     * 顺序规则（用户要求）：
-     *   · GitHub 拿到 version.json → 先 GitHub，失败再 CDN、节点
-     *   · CDN 拿到 version.json    → 先 CDN，失败再 GitHub、节点
-     *   · 节点拿到 version.json    → **先试 GitHub 和 CDN**，都不行才用节点；全失败提示「更新源不可用」
+     * 顺序规则（跟随来源 + 统一主干）：
+     *   · GitHub 拿到 version.json → GitHub → CDN(tag) → CDN(main) → apkPath → 节点 → 节点兼容
+     *   · CDN 拿到 version.json    → CDN(tag) → GitHub → CDN(main) → apkPath → 节点 → 节点兼容
+     *   · 节点拿到 version.json    → GitHub → CDN(tag) → CDN(main) → 节点 → 节点兼容 → apkPath
+     *   全失败提示「更新源不可用」。apkPath 固定放**最后**兜底（它通常与节点候选同址）。
      *
      * 每个候选都用同一个 sha256 校验，所以拿到旧包/坏包不会误装。
      */
@@ -724,28 +725,35 @@ public final class Cloud {
                 ? base() + "download/app-debug.apk"
                 : base() + "download/app-v" + name + ".apk";
 
-        // ① 首选：与获取 version.json 的通道一致
+        // ① 首选：与获取 version.json 的通道一致（跟随来源）
+        //    GitHub 拿到 → 先 GitHub；CDN 拿到 → 先 CDN；节点拿到 → 先 GitHub/CDN（节点最后）
         if ("github".equals(source) && !github.isEmpty()) {
             out.add(github);
         } else if ("cdn".equals(source)) {
             out.add(cdn);
         } else if ("node".equals(source)) {
-            // 节点拿到 version.json 时，先试 GitHub 与 CDN（节点自身反而放最后）
             if (!github.isEmpty()) out.add(github);
             out.add(cdn);
-            out.add(node);
         }
 
-        // ② 前端传来的地址也纳入（可能带 ?v= 查询串）
+        // ② 主通道补齐：GitHub → CDN(tag) → CDN(main)
+        for (String u : new String[]{github, cdnTag, cdnMain}) {
+            if (u != null && !u.isEmpty() && !out.contains(u)) out.add(u);
+        }
+
+        // ③ 节点：当前连的节点（带版本名）→ 同一节点的 app-debug.apk 兼容副本
+        String nodeCompat = base() + "download/app-debug.apk";
+        for (String u : new String[]{node, nodeCompat}) {
+            if (u != null && !u.isEmpty() && !out.contains(u)) out.add(u);
+        }
+
+        // ④ 最后兜底：version.json 里声明的 apkPath
+        //    排最后是因为它通常和「节点」候选指向同一个地方（主节点），前面已经试过；
+        //    只有当前连的是备用节点、而 apkPath 指向主节点时，这一条才有独立价值。
+        //    新版统一接受绝对/相对两种写法并归一化成绝对 URL。
         if (apkPath != null && !apkPath.isEmpty()) {
             String u = apkPath.startsWith("http") ? apkPath : base() + apkPath.replaceFirst("^/", "");
             if (!out.contains(u)) out.add(u);
-        }
-
-        // ③ 其余通道补齐（cdnTag → cdnMain → 节点带版本 → 节点兼容副本）
-        String nodeCompat = base() + "download/app-debug.apk";
-        for (String u : new String[]{github, cdnTag, cdnMain, node, nodeCompat}) {
-            if (u != null && !u.isEmpty() && !out.contains(u)) out.add(u);
         }
         return out;
     }

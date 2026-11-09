@@ -143,7 +143,9 @@ jobs:
           d = {
               "versionCode": int(code),
               "versionName": name,
-              "apkPath": "/download/app-v" + name + ".apk?v=" + code,
+              # 绝对 URL：旧版 App（<=v2.5.5）只会把以 "/" 开头的 apkPath 改写成 GitHub 地址，
+              # 绝对 URL 不会触发那段改写，于是旧版也能直接从节点下载，不会被 GitHub 卡住。
+              "apkPath": "https://charge.lizishuo.cn/download/app-v" + name + ".apk?v=" + code,
               "sizeText": size,
               "sha256": sha,
               "releasedAt": subprocess.check_output(["date", "+%Y-%m-%d %H:%M"], text=True, encoding="utf-8").strip(),

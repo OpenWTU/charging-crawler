@@ -196,6 +196,13 @@ def main() -> int:
         print("  ✗ 该 Release 里没有 version.json 资产（release-apk 可能没跑完）")
         return 1
     data = json.loads(http_text(asset["browser_download_url"]))
+    # 兜底绝对化：老版本 CI 生成的 apkPath 是相对路径（/download/xxx），
+    # 旧版 App 会把这种写法改写成 GitHub 地址，导致 GitHub 不通时下不了包。
+    # 这里统一改成绝对 URL，旧版也能直接从节点下载。
+    ap = str(data.get("apkPath") or "")
+    if ap.startswith("/"):
+        data["apkPath"] = "https://charge.lizishuo.cn" + ap
+        print(f"  apkPath 已绝对化：{data['apkPath']}")
     print(f"  versionName={data.get('versionName')} versionCode={data.get('versionCode')} "
           f"sha={str(data.get('sha256'))[:16]}…")
 
