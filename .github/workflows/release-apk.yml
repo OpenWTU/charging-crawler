@@ -140,6 +140,28 @@ jobs:
           PY
           cat version.json
 
+      - name: 把 version.json 同步到 main（供 jsDelivr 走 CDN 兜底）
+        # version.json 平时只作为 Release asset 存在，而 jsDelivr 只能代理「仓库里的文件」，
+        # 代理不了 Release 附件。这里顺手把它提交回 main，App 就能在服务器不可达时
+        # 从 cdn.jsdelivr.net 拿到同一份版本信息（见 Cloud.fetchVersionFromCdn）。
+        # 提交信息带 [skip ci]：ci.yml 监听 push main，不加会被自己触发一轮。
+        run: |
+          set -e
+          mkdir -p deploy
+          cp version.json deploy/version.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main --depth=1
+          git checkout -B main origin/main
+          cp version.json deploy/version.json
+          git add deploy/version.json
+          if git diff --cached --quiet; then
+            echo "deploy/version.json 无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "chore(release): 同步 deploy/version.json 到 main [skip ci]"
+          git push origin main
+
       - name: 发布 Release（上传 APK + version.json）
         uses: softprops/action-gh-release@v2
         with:

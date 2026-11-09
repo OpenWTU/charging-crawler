@@ -496,13 +496,79 @@ public final class Cloud {
         }
     }
 
-    /** 检查更新：GitHub releases/latest 优先（去中心化），失败回退服务器 /api/version。 */
+    /**
+     * 检查更新：**服务器优先**，GitHub 兜底。
+     *
+     * 原来是 GitHub 优先 —— 而 api.github.com 在国内经常被阻断，于是每次检查更新
+     * 都要先等满 4 秒超时才回退，用户感觉「检查更新很慢/经常失败」。
+     * 自己的服务器 /api/version 通常几十毫秒，镜像里就带着 version.json。
+     */
+    /**
+     * 检查更新的取源顺序，与节点目录保持一致：**GitHub API → CDN → 节点 API**。
+     *
+     *   ① GitHub Releases API —— 官方源
+     *   ② jsDelivr CDN —— 仓库里 deploy/version.json（CI 每次发版同步）
+     *   ③ 节点 /api/version —— 自己的服务器，最后兜底
+     *
+     * 每源 4 秒超时，任一成功即返回；**每个源都写一条 DebugLog**
+     * （成功记版本号与耗时，失败记异常类型与耗时），排查时不用猜走的哪条路。
+     */
     public static JSONObject fetchVersion() throws Exception {
+        long t0 = System.currentTimeMillis();
         try {
-            return fetchVersionFromGitHub();
-        } catch (Exception e) {
-            return fetchVersionFromServer();
+            JSONObject d = fetchVersionFromGitHub();
+            DebugLog.add("版本检查[GitHub] 成功 → " + d.optString("versionName")
+                    + "，" + (System.currentTimeMillis() - t0) + "ms");
+            return d;
+        } catch (Exception e1) {
+            DebugLog.add("版本检查[GitHub] 失败：" + e1.getClass().getSimpleName()
+                    + " " + e1.getMessage() + "，" + (System.currentTimeMillis() - t0) + "ms");
         }
+
+        t0 = System.currentTimeMillis();
+        try {
+            JSONObject d = fetchVersionFromCdn();
+            DebugLog.add("版本检查[CDN] 成功 → " + d.optString("versionName")
+                    + "，" + (System.currentTimeMillis() - t0) + "ms");
+            return d;
+        } catch (Exception e2) {
+            DebugLog.add("版本检查[CDN] 失败：" + e2.getClass().getSimpleName()
+                    + " " + e2.getMessage() + "，" + (System.currentTimeMillis() - t0) + "ms");
+        }
+
+        t0 = System.currentTimeMillis();
+        try {
+            JSONObject d = fetchVersionFromServer();
+            DebugLog.add("版本检查[节点API] 成功 → " + d.optString("versionName")
+                    + "，" + (System.currentTimeMillis() - t0) + "ms");
+            return d;
+        } catch (Exception e3) {
+            DebugLog.add("版本检查[节点API] 失败：" + e3.getClass().getSimpleName()
+                    + " " + e3.getMessage() + "，" + (System.currentTimeMillis() - t0) + "ms");
+            throw new java.io.IOException("三个版本源均不可用");
+        }
+    }
+
+    /**
+     * 从 jsDelivr 拿仓库里的 deploy/version.json（CI 每次发版会同步到 main）。
+     *
+     * 第二选择：有国内节点、直出文件内容。仓库里那份的 apkPath 是
+     * 服务器相对路径（`/download/app-debug.apk?v=...`），这里改写成 GitHub Release
+     * 的绝对地址 —— CDN 能通通常说明 GitHub 生态也通，且该前缀在 downloadApk 白名单里。
+     */
+    private static JSONObject fetchVersionFromCdn() throws Exception {
+        JSONObject d = httpGetJson(
+                "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/version.json", 4000);
+        // 仓库里的 version.json 是 CI 生成的同一份，apkPath 是服务器相对路径
+        // （`/download/app-debug.apk?v=...`）。这里改写成 GitHub Release 的绝对地址：
+        // CDN 能通通常说明 GitHub 生态也通，而且这个前缀在 downloadApk 白名单里。
+        String apkPath = d.optString("apkPath", "");
+        String name = d.optString("versionName", "").trim();
+        if (apkPath.startsWith("/") && !name.isEmpty()) {
+            d.put("apkPath", "https://github.com/OpenWTU/charging-crawler/releases/download/v"
+                    + name + "/app-debug.apk");
+        }
+        return d;
     }
 
     /** GitHub 直读：releases/latest 拿 tag → 下载 version.json asset → apkPath 指向 GitHub。 */
@@ -529,7 +595,8 @@ public final class Cloud {
     }
 
     private static JSONObject fetchVersionFromServer() throws Exception {
-        return httpGetJson(base() + "api/version");
+        // 服务器通常几十毫秒；给 4 秒上限，挂了就尽快落到 GitHub 兜底
+        return httpGetJson(base() + "api/version", 4000);
     }
 
     private static JSONObject httpGetJson(String url) throws Exception {

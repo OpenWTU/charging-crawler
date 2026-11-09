@@ -133,11 +133,15 @@ export const NODE_P2P_ADDR = env('NODE_P2P_ADDR', '');
 export const P2P_TRUST_NON_WHITELIST = envBool('P2P_TRUST_NON_WHITELIST', false);
 /**
  * 节点目录 + peerId 白名单（同一份文件，App 与服务器共用）。
- * 用 GitHub contents API（api.github.com 不被 SNI 阻断）。
+ *
+ * 默认走 **jsDelivr 的 GitHub CDN**（`cdn.jsdelivr.net/gh/{owner}/{repo}@{ref}/{path}`）：
+ * 有国内节点、直出原始文件内容，不像 `api.github.com/contents` 那样需要
+ * `Accept: application/vnd.github.raw` 才不返回 base64 包装，也不会整段被阻断。
+ * 需要时可以覆盖成任意镜像（`P2P_WHITELIST_URL=...`）。
  */
 export const P2P_WHITELIST_URL = env(
   'P2P_WHITELIST_URL',
-  'https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/p2p/nodes.json',
+  'https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/server/p2p/nodes.json',
 );
 /** 白名单本地缓存（离线时兜底） */
 export const P2P_WHITELIST_CACHE = env(

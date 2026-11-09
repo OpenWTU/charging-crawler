@@ -6,9 +6,10 @@
  *   controllers  → {ok, count, controllers:[{area_name,device_hex,code,qr_device_no}]}
  *   free-rate    → {ok, days, total_samples, points:[{hour,samples,free_rate}]}
  */
+import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
-import { CONTROLLERS_LIMIT } from '../config.js';
+import { CONTROLLERS_LIMIT, P2P_WHITELIST_CACHE, P2P_WHITELIST_DEFAULT } from '../config.js';
 import { getDb } from '../db/index.js';
 import { pyRound } from '../domain/analytics.js';
 import { fmtDateTime } from '../domain/prediction.js';
@@ -25,6 +26,57 @@ export async function registerMiscRoutes(app: FastifyInstance): Promise<void> {
       ok: true,
       areas: res.rows.map((r) => ({ name: String(r.name), lat: r.lat, lng: r.lng })),
     });
+  });
+
+  /**
+   * 节点目录（GitHub 代理）。
+   *
+   * App 的 NodeDiscovery 原本直连 `api.github.com/.../contents/nodes.json`，
+   * 而 api.github.com 在国内经常被阻断/极慢 —— 表现为「节点发现」每次启动都要
+   * 干等 3 秒超时，然后回退默认节点。这里由服务器代取并返回同一份 JSON，
+   * App 只要问自己的服务器（几十毫秒）就能拿到目录。
+   *
+   * 数据源按可用性依次兜底：
+   *   ① P2P_WHITELIST_CACHE（数据卷缓存，服务器自己从 GitHub 拉过的那份）
+   *   ② P2P_WHITELIST_DEFAULT（镜像内随版本发布的副本）
+   *   ③ jsDelivr CDN 现场拉一次（前两级都空时）
+   * 两者都是 `{ nodes: [...] }`，与 GitHub 上的格式完全一致，App 可直接解析。
+   */
+  app.get('/api/nodes.json', async (_req, reply) => {
+    for (const file of [P2P_WHITELIST_CACHE, P2P_WHITELIST_DEFAULT]) {
+      try {
+        const text = fs.readFileSync(file, 'utf8');
+        // 校验是合法 JSON 再下发，避免把半截文件/损坏缓存发给客户端
+        const parsed = JSON.parse(text) as { nodes?: unknown };
+        if (!Array.isArray(parsed.nodes)) continue;
+        return reply
+          .header('Cache-Control', 'public, max-age=300')
+          .type('application/json; charset=utf-8')
+          .send(JSON.stringify(parsed));
+      } catch {
+        /* 换下一个来源 */
+      }
+    }
+    // 两级本地来源都空（比如全新部署、数据卷刚清空）：现场问一次 jsDelivr。
+    // 不用 api.github.com —— 服务器所在国内网络同样经常连不上它。
+    try {
+      const r = await fetch(
+        'https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/server/p2p/nodes.json',
+        { signal: AbortSignal.timeout(5000) },
+      );
+      if (r.ok) {
+        const parsed = (await r.json()) as { nodes?: unknown };
+        if (Array.isArray(parsed.nodes)) {
+          return reply
+            .header('Cache-Control', 'public, max-age=300')
+            .type('application/json; charset=utf-8')
+            .send(JSON.stringify(parsed));
+        }
+      }
+    } catch {
+      /* 连 CDN 都不通：下面返回 404，App 会继续试它自己的兜底源 */
+    }
+    return reply.code(404).send({ ok: false, error: 'nodes_unavailable', nodes: [] });
   });
 
   /** 控制器清单：code 非空，按 area_name + device_hex 排序，上限 500 */

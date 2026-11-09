@@ -18,6 +18,21 @@ import { validateIncoming } from '../src/domain/p2pvalidate.js';
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'charge-p2pval-test-'));
 const dbPath = path.join(tmpDir, 'charge.db');
 
+/**
+ * 生成「当前时间 + offsetSec」的本地时间串。
+ *
+ * ⚠️ 这个文件原来用写死的 '2026-11-08 09:00:00' 当基准时间，而 validateIncoming 有一条
+ * 「与本地当前时间相差 > 24h 视为补传历史，直接 no_baseline 不判」的保护 ——
+ * 于是**跨天之后全部用例都会变成 no_baseline 而失败**（11-09 实测 9 个用例红）。
+ * 一律改用相对时间，测试才不会随日期腐烂。
+ */
+function tsAt(offsetSec: number): string {
+  const d = new Date(Date.now() + offsetSec * 1000);
+  const p2 = (x: number): string => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} `
+    + `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+}
+
 /** 构造一份快照 payload（6 个区域，48 口） */
 function makeSnapshot(overrides: Record<string, { idle: number; charging?: number; fault?: number }> = {}) {
   const names = ['A 区', 'B 区', 'C 区', 'D 区', 'E 区', 'F 区'];
@@ -34,7 +49,7 @@ function makeSnapshot(overrides: Record<string, { idle: number; charging?: numbe
       fault_port: fault,
     };
   });
-  return { project: 'test', app_version: '2.3.8', captured_at: '2026-11-08 09:00:00', areas };
+  return { project: 'test', app_version: '2.3.8', captured_at: tsAt(0), areas };
 }
 
 /** 往本地库插一条快照（作为基准） */
@@ -79,9 +94,9 @@ beforeEach(async () => {
 describe('跨节点数据互校', () => {
   it('两份完全一致 → accept(within_threshold)，deviation=0', async () => {
     const local = makeSnapshot();
-    await insertSnapshot(local, '2026-11-08 09:00:00', 'dev-local');
+    await insertSnapshot(local, tsAt(0), 'dev-local');
     const remote = makeSnapshot();
-    const r = await validateIncoming(remote, '2026-11-08 09:00:05');
+    const r = await validateIncoming(remote, tsAt(5));
     expect(r.decision).toBe('accept');
     expect(r.reason).toBe('within_threshold');
     expect(r.deviation).toBeCloseTo(0, 5);
@@ -89,9 +104,9 @@ describe('跨节点数据互校', () => {
   });
 
   it('只差 1 个空闲口 → accept', async () => {
-    await insertSnapshot(makeSnapshot(), '2026-11-08 09:00:00', 'dev-local');
+    await insertSnapshot(makeSnapshot(), tsAt(0), 'dev-local');
     const remote = makeSnapshot({ 'A 区': { idle: 21, charging: 26 } });
-    const r = await validateIncoming(remote, '2026-11-08 09:00:05');
+    const r = await validateIncoming(remote, tsAt(5));
     expect(r.decision).toBe('accept');
     expect(r.deviation).toBeLessThan(0.5);
   });
@@ -102,13 +117,13 @@ describe('跨节点数据互校', () => {
       'B 区': { idle: 2, charging: 45 },
       'C 区': { idle: 2, charging: 45 },
     });
-    await insertSnapshot(local, '2026-11-08 09:00:00', 'dev-local');
+    await insertSnapshot(local, tsAt(0), 'dev-local');
     const remote = makeSnapshot({
       'A 区': { idle: 40, charging: 7 },
       'B 区': { idle: 40, charging: 7 },
       'C 区': { idle: 40, charging: 7 },
     });
-    const r = await validateIncoming(remote, '2026-11-08 09:00:05');
+    const r = await validateIncoming(remote, tsAt(5));
     expect(r.decision).toBe('drop');
     expect(r.reason).toBe('deviation_exceeded');
     expect(r.deviation).toBeGreaterThan(0.5);
@@ -122,13 +137,13 @@ describe('跨节点数据互校', () => {
       'B 区': { idle: 2, charging: 45 },
       'C 区': { idle: 2, charging: 45 },
     });
-    await insertSnapshot(local, '2026-11-08 09:00:00', 'dev-local');
+    await insertSnapshot(local, tsAt(0), 'dev-local');
     const remote = makeSnapshot({
       'A 区': { idle: 40, charging: 7 },
       'B 区': { idle: 40, charging: 7 },
       'C 区': { idle: 40, charging: 7 },
     });
-    const r = await validateIncoming(remote, '2026-11-08 09:00:05');
+    const r = await validateIncoming(remote, tsAt(5));
     expect(r.decision).toBe('suspect');
     expect(r.reason).toBe('deviation_exceeded');
   });
@@ -136,46 +151,46 @@ describe('跨节点数据互校', () => {
   it('off 模式 → accept(mode_off) 且不做比对', async () => {
     await writeSetting('p2p_validate_mode', 'off', null);
     invalidateSettingsCache();
-    const r = await validateIncoming(makeSnapshot(), '2026-11-08 09:00:00');
+    const r = await validateIncoming(makeSnapshot(), tsAt(0));
     expect(r.decision).toBe('accept');
     expect(r.reason).toBe('mode_off');
     expect(r.comparable).toBe(0);
   });
 
   it('本节点无快照 → accept(no_baseline)', async () => {
-    const r = await validateIncoming(makeSnapshot(), '2026-11-08 09:00:00');
+    const r = await validateIncoming(makeSnapshot(), tsAt(0));
     expect(r.decision).toBe('accept');
     expect(r.reason).toBe('no_baseline');
     expect(r.baseSnapshotId).toBeNull();
   });
 
   it('基准在窗口外（±601 秒）→ accept(no_baseline)', async () => {
-    await insertSnapshot(makeSnapshot(), '2026-11-08 08:49:00', 'dev-local');
+    await insertSnapshot(makeSnapshot(), tsAt(-660), 'dev-local');
     // 远端 09:00:00，差 11 分钟 > 默认 600 秒窗口
-    const r = await validateIncoming(makeSnapshot(), '2026-11-08 09:00:00');
+    const r = await validateIncoming(makeSnapshot(), tsAt(0));
     expect(r.decision).toBe('accept');
     expect(r.reason).toBe('no_baseline');
   });
 
   it('可比区域不足（只 2 个同名）→ accept(insufficient_overlap)', async () => {
     const local = makeSnapshot();
-    await insertSnapshot(local, '2026-11-08 09:00:00', 'dev-local');
+    await insertSnapshot(local, tsAt(0), 'dev-local');
     const remote = {
-      captured_at: '2026-11-08 09:00:00',
+      captured_at: tsAt(0),
       areas: [
         { name: 'A 区', total_port: 48, idle_port: 40, charging_port: 7, fault_port: 1 },
         { name: 'B 区', total_port: 48, idle_port: 40, charging_port: 7, fault_port: 1 },
       ],
     };
-    const r = await validateIncoming(remote, '2026-11-08 09:00:05');
+    const r = await validateIncoming(remote, tsAt(5));
     expect(r.decision).toBe('accept');
     expect(r.reason).toBe('insufficient_overlap');
   });
 
   it('区域 total 不一致 → 该区域进 skipped，不参与判定', async () => {
-    await insertSnapshot(makeSnapshot(), '2026-11-08 09:00:00', 'dev-local');
+    await insertSnapshot(makeSnapshot(), tsAt(0), 'dev-local');
     const remote = {
-      captured_at: '2026-11-08 09:00:00',
+      captured_at: tsAt(0),
       areas: [
         { name: 'A 区', total_port: 24, idle_port: 2, charging_port: 21, fault_port: 1 },
         { name: 'B 区', total_port: 48, idle_port: 20, charging_port: 27, fault_port: 1 },
@@ -183,27 +198,27 @@ describe('跨节点数据互校', () => {
         { name: 'D 区', total_port: 48, idle_port: 20, charging_port: 27, fault_port: 1 },
       ],
     };
-    const r = await validateIncoming(remote, '2026-11-08 09:00:05');
+    const r = await validateIncoming(remote, tsAt(5));
     expect(r.detail.skipped.some((s) => s.why === 'total_mismatch')).toBe(true);
     expect(r.decision).toBe('accept');
   });
 
   it('total=0 → 跳过不崩', async () => {
-    await insertSnapshot(makeSnapshot(), '2026-11-08 09:00:00', 'dev-local');
+    await insertSnapshot(makeSnapshot(), tsAt(0), 'dev-local');
     const remote = {
-      captured_at: '2026-11-08 09:00:00',
+      captured_at: tsAt(0),
       areas: [
         { name: 'A 区', total_port: 0, idle_port: 0, charging_port: 0, fault_port: 0 },
         { name: 'B 区', total_port: 48, idle_port: 20, charging_port: 27, fault_port: 1 },
       ],
     };
-    const r = await validateIncoming(remote, '2026-11-08 09:00:05');
+    const r = await validateIncoming(remote, tsAt(5));
     expect(r.detail.skipped.some((s) => s.why === 'zero_total')).toBe(true);
   });
 
   it('远端 areas 缺失 → drop(invalid_payload)', async () => {
-    await insertSnapshot(makeSnapshot(), '2026-11-08 09:00:00', 'dev-local');
-    const r = await validateIncoming({ captured_at: '2026-11-08 09:00:00' }, '2026-11-08 09:00:05');
+    await insertSnapshot(makeSnapshot(), tsAt(0), 'dev-local');
+    const r = await validateIncoming({ captured_at: tsAt(0) }, tsAt(5));
     expect(r.decision).toBe('drop');
     expect(r.reason).toBe('invalid_payload');
   });
@@ -214,19 +229,19 @@ describe('跨节点数据互校', () => {
       'B 区': { idle: 20, charging: 28, fault: 0 },
       'C 区': { idle: 20, charging: 28, fault: 0 },
     });
-    await insertSnapshot(local, '2026-11-08 09:00:00', 'dev-local');
+    await insertSnapshot(local, tsAt(0), 'dev-local');
     const remote = makeSnapshot({
       'A 区': { idle: 20, charging: 22, fault: 6 },
       'B 区': { idle: 20, charging: 22, fault: 6 },
       'C 区': { idle: 20, charging: 22, fault: 6 },
     });
-    const r = await validateIncoming(remote, '2026-11-08 09:00:05');
+    const r = await validateIncoming(remote, tsAt(5));
     expect(r.decision).toBe('drop');
     expect(r.deviation).toBeGreaterThanOrEqual(0.5);
   });
 
   it('时钟与本地相差 >24h → 视为补传历史，accept(no_baseline)', async () => {
-    await insertSnapshot(makeSnapshot(), '2026-11-08 09:00:00', 'dev-local');
+    await insertSnapshot(makeSnapshot(), tsAt(0), 'dev-local');
     const remote = { ...makeSnapshot(), captured_at: '2026-11-01 09:00:00' };
     const r = await validateIncoming(remote, '2026-11-01 09:00:00');
     expect(r.decision).toBe('accept');

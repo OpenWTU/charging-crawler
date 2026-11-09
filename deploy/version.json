@@ -1,0 +1,11 @@
+{
+  "versionCode": 2004021,
+  "versionName": "2.4.21",
+  "apkPath": "/download/app-debug.apk?v=2004021",
+  "sizeText": "468K",
+  "sha256": "409743385c97ce25d3c458b8215545ec2d2724cbfc6e6f96e19507dea992ebea",
+  "releasedAt": "2026-11-08 07:38",
+  "changelog": [
+    "fix(android): 状态栏跟随深色 —— 补 FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS"
+  ]
+}

@@ -41,7 +41,23 @@ public final class NodeDiscovery {
     /** 内置兜底（GitHub 目录、缓存、mDNS 都不可用时用它） */
     public static final String DEFAULT_BASE = "https://charge.lizishuo.cn";
 
-    private static final String DIRECTORY_URL =
+    /**
+     * 目录源③（最后兜底）：自己的服务器代理。
+     * 服务器内部再兜底「数据卷缓存 → 镜像内副本 → jsDelivr」，见 routes/misc.ts /api/nodes.json。
+     */
+    private static final String DIRECTORY_URL_PRIMARY = DEFAULT_BASE + "/api/nodes.json";
+    /**
+     * 目录源②：jsDelivr 的 GitHub CDN（`cdn.jsdelivr.net/gh/{owner}/{repo}@{ref}/{path}`）。
+     *
+     * 有国内节点，且**直出原始文件内容** —— 不像 contents API 那样需要
+     * `Accept: application/vnd.github.raw` 才不返回 base64 包装。
+     * 国内手机上 api.github.com 经常整段阻断，这一层通常还能通。
+     * `@main` 走 CDN 缓存（节点目录变动很少，滞后可接受）。
+     */
+    private static final String DIRECTORY_URL_CDN =
+            "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/server/p2p/nodes.json";
+    /** 目录源①（首选）：GitHub contents API。 */
+    private static final String DIRECTORY_URL_FALLBACK =
             "https://api.github.com/repos/OpenWTU/charging-crawler/contents/server/p2p/nodes.json";
     private static final String MDNS_TYPE = "_charge-http._tcp.";
     private static final String PREFS = "charge_nodes";
@@ -97,9 +113,11 @@ public final class NodeDiscovery {
             picked = true;
         }
 
-        // 2) GitHub 目录
+        // 2) 节点目录（CDN → GitHub API → 节点 API，见 fetchDirectory）
+        // candidates 必须声明在外层：下面的失败日志要用它判断「是目录没拿到还是一堆候选全挂」
+        List<String> candidates = new ArrayList<>();
         if (!picked) {
-            List<String> candidates = fetchDirectory();
+            candidates = fetchDirectory();
             for (String url : candidates) {
                 if (healthy(url)) {
                     switchTo(url);
@@ -114,7 +132,7 @@ public final class NodeDiscovery {
             switchTo(DEFAULT_BASE);
         } else {
             if (candidates.isEmpty()) {
-                // 目录本身没拿到（GitHub contents API 在国内常被阻断）：
+                // 三个目录源（CDN / GitHub API / 节点 API）都没拿到：
                 // 这不是「所有节点都挂了」，措辞别误导，也别让人以为服务出问题。
                 DebugLog.add("节点目录不可达（保留默认节点 " + currentBase + "）");
             } else {
@@ -126,17 +144,46 @@ public final class NodeDiscovery {
         startMdns();
     }
 
+    /**
+     * 拉节点目录，三源顺序：**GitHub API → CDN → 节点 API**。
+     *
+     * 原来只打 api.github.com，国内经常被阻断 —— 每次启动都要等满 3 秒超时，
+     * 用户看到的就是「节点发现：全部候选不可达」。CDN 有国内节点、直出原始 JSON，
+     * 通常几百毫秒就能拿到。
+     */
     private static List<String> fetchDirectory() {
+        // 三源顺序：GitHub contents API → jsDelivr CDN → 节点 /api/nodes.json
+        // 每个源都记一条日志（成功条数 / 失败原因），排查「节点发现」时不用猜。
+        List<String> out = fetchDirectoryFrom(DIRECTORY_URL_FALLBACK, true, "GitHub API");
+        if (!out.isEmpty()) {
+            return out;
+        }
+        out = fetchDirectoryFrom(DIRECTORY_URL_CDN, false, "CDN");
+        if (!out.isEmpty()) {
+            return out;
+        }
+        return fetchDirectoryFrom(DIRECTORY_URL_PRIMARY, false, "节点 API");
+    }
+
+    /**
+     * @param githubStyle 是否按 GitHub contents API 的方式请求（需要 Accept: raw）。
+     *                    false = CDN / 自己的服务器，普通 GET 即可。
+     * @param label       日志里显示的源名称（GitHub API / CDN / 节点 API）。
+     */
+    private static List<String> fetchDirectoryFrom(String endpoint, boolean githubStyle, String label) {
         List<String> out = new ArrayList<>();
         HttpURLConnection conn = null;
+        long t0 = System.currentTimeMillis();
         try {
-            URL url = new URL(DIRECTORY_URL);
+            URL url = new URL(endpoint);
             conn = (HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(PROBE_TIMEOUT_MS);
             conn.setReadTimeout(PROBE_TIMEOUT_MS);
             conn.setRequestProperty("User-Agent", "ChargingPileApp");
-            // contents API 需要 raw header 才返回原始 JSON 文本（而非 base64 包装）
-            conn.setRequestProperty("Accept", "application/vnd.github.raw");
+            if (githubStyle) {
+                // contents API 需要 raw header 才返回原始 JSON 文本（而非 base64 包装）
+                conn.setRequestProperty("Accept", "application/vnd.github.raw");
+            }
             InputStream in = conn.getInputStream();
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(in, StandardCharsets.UTF_8));
@@ -146,6 +193,7 @@ public final class NodeDiscovery {
                 sb.append(line);
             }
             reader.close();
+            int httpCode = conn.getResponseCode();
             JSONObject root = new JSONObject(sb.toString());
             JSONArray arr = root.optJSONArray("nodes");
             if (arr != null) {
@@ -160,8 +208,11 @@ public final class NodeDiscovery {
                     }
                 }
             }
+            DebugLog.add("节点目录[" + label + "] 成功：" + out.size() + " 个候选"
+                    + "，HTTP " + httpCode + "，" + (System.currentTimeMillis() - t0) + "ms");
         } catch (Exception e) {
-            DebugLog.add("节点目录拉取失败: " + e.getMessage());
+            DebugLog.add("节点目录[" + label + "] 失败：" + e.getClass().getSimpleName()
+                    + " " + e.getMessage() + "，" + (System.currentTimeMillis() - t0) + "ms");
         } finally {
             if (conn != null) {
                 conn.disconnect();

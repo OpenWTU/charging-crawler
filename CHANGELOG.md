@@ -6,7 +6,53 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
-## [v2.4.23] - 2026-11-09
+## [v2.4.24] - 2026-11-09
+
+### GitHub 访问统一成三级降级：GitHub → CDN → 节点 API
+`api.github.com` 在国内经常整段阻断，原来 App 的「检查更新」和「节点发现」都以它为起点，
+于是每次启动/检查都要先干等 3~4 秒超时。现在两处统一成同一套降级顺序，**每个源都写日志**：
+
+**检查更新**（`Cloud.fetchVersion`）
+
+| 顺序 | 源 | 说明 |
+|---|---|---|
+| ① | GitHub Releases API | 官方源 |
+| ② | jsDelivr CDN | 仓库里 `deploy/version.json`（CI 每次发版同步） |
+| ③ | 节点 `/api/version` | 自己的服务器兜底 |
+
+日志形如 `版本检查[CDN] 成功 → 2.4.24，312ms` / `版本检查[GitHub] 失败：SocketTimeoutException …，4002ms`。
+
+**节点目录**（`NodeDiscovery.fetchDirectory`）
+
+| 顺序 | 源 | 说明 |
+|---|---|---|
+| ① | GitHub contents API | 官方源 |
+| ② | jsDelivr CDN | 直出原始 JSON，不需要 `Accept: raw` |
+| ③ | 节点 `/api/nodes.json` | 新增的服务器代理 |
+
+日志形如 `节点目录[CDN] 成功：2 个候选，HTTP 200，354ms`。
+
+### 服务端：新增 `/api/nodes.json`（GitHub 代理）
+App 原来只能直连 GitHub 拿节点目录。现在服务器代取，三级兜底：
+数据卷缓存 → 镜像内副本 → jsDelivr 现场拉。App 因此多了一条**完全不依赖 GitHub** 的路。
+
+### CI：把 `version.json` 同步到 main
+`version.json` 平时只作为 Release asset 存在，而 jsDelivr 只能代理**仓库里的文件**。
+`release-apk.yml` 新增一步：发版后把 `version.json` 复制成 `deploy/version.json` 提交回 main
+（commit message 带 `[skip ci]`，避免触发 ci.yml）。这样 CDN 那层才有东西可取。
+
+### 顺带修掉两个问题
+1. **`p2pvalidate.test.ts` 时间敏感**：用例把基准时间写死成 `2026-11-08 09:00:00`，
+   而 `validateIncoming` 有「与当前时间相差 >24h 视为补传历史 → no_baseline」的保护 ——
+   **跨天之后 13 个用例里 9 个必红**。改用 `tsAt(offsetSec)` 相对时间。
+2. **`NodeDiscovery` 编译错误**：上一版加日志时把 `candidates` 写在了 `if` 块内，
+   却在块外的失败分支里引用（找不到符号）。
+
+### 一并包含（v2.4.22 / v2.4.23 未部署的内容）
+- 加载/刷新时统计条改骨架占位（`.stat-ph`），底部清单骨架跟随 `busy`
+- App 回前台重读系统深浅色（`onAppResume` → `watchSystem`），修「切深色不生效」
+
+
 
 ### 修复：App 回前台后仍用旧配色（系统主题切换不生效）
 用户日志显示状态栏桥**是被调到的**（`状态栏 → 浅色`），问题在于「切了系统深色，App 仍判定为浅色」。
