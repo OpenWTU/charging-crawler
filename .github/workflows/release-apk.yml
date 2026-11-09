@@ -226,3 +226,14 @@ jobs:
             exit 1
           fi
           echo "deploy/version.json 已同步"
+
+          # jsDelivr 对 @main 这类分支引用缓存 12 小时，提交完必须主动 purge 才会立刻生效，
+          # 否则 App 走 CDN 那层会拿到上一个版本。
+          echo "--- 4) purge jsDelivr 缓存 ---"
+          PURGE="https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/deploy/version.json"
+          PCODE=$(curl -sS -o /tmp/purge.json -w '%{http_code}' --max-time 25 "$PURGE" || echo 000)
+          echo "purge HTTP=$PCODE"
+          head -c 400 /tmp/purge.json 2>/dev/null; echo
+          if [ "$PCODE" != "200" ]; then
+            echo "::warning::purge 返回 $PCODE（CDN 可能要等缓存自然过期，最多 12h）"
+          fi

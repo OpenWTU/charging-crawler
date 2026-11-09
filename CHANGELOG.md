@@ -6,6 +6,24 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.5.1] - 2026-11-09
+
+### CI：同步 version.json 后主动 purge jsDelivr 缓存
+**jsDelivr 对 `@main` 这类分支引用缓存 12 小时** —— 光把 `deploy/version.json` 提交进仓库
+**不会**让 CDN 立刻更新，App 走 CDN 那层会拿到上一个版本。
+
+实测：`purge.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/version.json`
+返回 `HTTP 200 {"status":"finished","throttled":false,"providers":{"CF":true,"FY":true}}`
+（Cloudflare + Fastly 都刷新成功）。
+
+**改动**：`release-apk.yml` 的同步步骤末尾加 purge 调用（失败只 warning 不阻塞）。
+另把 `GH_TOKEN` 从 `secrets.GITHUB_TOKEN` 改成 `github.token` 并加空值自检 ——
+前者在某些仓库配置下不展开，会让 `Authorization: Bearer` 变空 → 401/409，
+这是前几版静默失败的怀疑根因。
+
+> 注意：`cdn.jsdelivr.net` 从本机网络完全不可达（`purge.jsdelivr.net` 正常），
+> 所以 CDN 的实际内容需要在手机端或其他网络验证。
+
 ## [v2.5.0] - 2026-11-09
 
 汇总 2.4.7 之后的一整轮改造（中间 v2.4.24~29 是排障过程，tag 已清理）。
