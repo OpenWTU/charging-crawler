@@ -157,7 +157,7 @@ jobs:
           cat version.json
 
       - name: 发布 Release（上传 APK + version.json）
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             android/build/app-v${{ env.VERSION_NAME }}.apk
