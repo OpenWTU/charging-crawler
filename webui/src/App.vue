@@ -246,6 +246,11 @@ function onNativeLocation(raw) {
 }
 
 function onAppResume() {
+  // 回到前台先补读系统深浅色：Android WebView 在后台切主题时不一定派发
+  // mediaQuery 的 change 事件，只能靠这一步纠正（否则状态栏/页面停在旧配色）。
+  try {
+    watchSystem();
+  } catch { /* 无 matchMedia 时忽略 */ }
   reload();
   maybeAutoRefresh();
 }

@@ -53,7 +53,16 @@ export function useTheme(onChange) {
     systemDark.value = !!e.matches;
   }
 
+  /**
+   * 重新读取系统深浅色并（重新）绑定 change 监听。
+   *
+   * 幂等：先 unwatchSystem 再绑，重复调用不会叠加 listener。
+   * 之所以每次都重读，是因为部分 Android WebView 在系统主题切换后**不派发**
+   * mediaQuery 的 change 事件（尤其 App 在后台时切的主题）—— 只能靠
+   * 「回到前台 / 页面重新可见」时主动再读一次来纠正。
+   */
   function watchSystem() {
+    unwatchSystem();
     try {
       mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       systemDark.value = mediaQuery.matches;
@@ -63,6 +72,11 @@ export function useTheme(onChange) {
         mediaQuery.addListener(onSchemeChange);
       }
     } catch { /* 无 matchMedia 时保持浅色 */ }
+  }
+
+  /** 页面重新可见时补读一次（浏览器切标签页 / WebView 从后台回来）。 */
+  function onVisibility() {
+    if (document.visibilityState === 'visible') watchSystem();
   }
 
   function unwatchSystem() {
@@ -96,11 +110,23 @@ export function useTheme(onChange) {
 
   // 2026-11-08 修：watchSystem() 原来**只定义、从不调用** —— 初始值靠 readSystemDark()
   // 拿到一次之后，系统切深浅色不会再触发任何更新，「跟随系统」等于只在冷启动时生效一次。
-  onMounted(watchSystem);
-  onUnmounted(unwatchSystem);
+  onMounted(() => {
+    watchSystem();
+    try {
+      document.addEventListener('visibilitychange', onVisibility);
+    } catch { /* ignore */ }
+  });
+  onUnmounted(() => {
+    try {
+      document.removeEventListener('visibilitychange', onVisibility);
+    } catch { /* ignore */ }
+    unwatchSystem();
+  });
 
   return {
     themePref, systemDark, theme, themeLabel,
     setThemePref, cycleTheme, watchSystem, unwatchSystem,
+    /** App 回到前台时调用：重读系统深浅色（幂等） */
+    refreshSystem: watchSystem,
   };
 }

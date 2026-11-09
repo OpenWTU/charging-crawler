@@ -113,7 +113,13 @@ public final class NodeDiscovery {
         if (!picked && healthy(DEFAULT_BASE)) {
             switchTo(DEFAULT_BASE);
         } else {
-            DebugLog.add("节点发现：全部候选不可达，保持 " + currentBase);
+            if (candidates.isEmpty()) {
+                // 目录本身没拿到（GitHub contents API 在国内常被阻断）：
+                // 这不是「所有节点都挂了」，措辞别误导，也别让人以为服务出问题。
+                DebugLog.add("节点目录不可达（保留默认节点 " + currentBase + "）");
+            } else {
+                DebugLog.add("节点发现：" + candidates.size() + " 个候选均不可达，保持 " + currentBase);
+            }
         }
 
         // 4) 启动 mDNS（局域网零配置发现，异步回调）
