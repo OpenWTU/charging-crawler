@@ -55,6 +55,7 @@ v-if="healthTokenKnown" class="hb hb-token" :class="tokenHealthClass"
         <section v-show="tab === TAB.LIVE">
           <HomeView
 ref="homeRef" :live="live" :active="tab === TAB.LIVE" :now-tick="nowTick"
+                    :refreshing="refreshing"
                     @refresh="refreshNow()" @reload="reload()" @locate="locateNow" />
         </section>
 

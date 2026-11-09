@@ -388,8 +388,15 @@ body {
 .skel-line { display: block; height: 12px; border-radius: 6px; background: var(--line); animation: skelPulse 1.3s ease-in-out infinite; }
 .skel-line.w60 { width: 58%; }
 .skel-line.w22 { width: 22%; height: 18px; }
+/* 统计条（空闲/充电中/故障）的加载占位：占位块尺寸贴着数字位，
+ * 切换时不会把下方的行距顶掉。i 元素默认斜体，这里归零。 */
+.stat-ph {
+  display: block; width: 54%; height: 20px; margin: 0 auto 2px;
+  border-radius: 6px; background: var(--line); font-style: normal;
+  animation: skelPulse 1.3s ease-in-out infinite;
+}
 @keyframes skelPulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .skel-line, .ports-skel-grid i, .free-skel { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .skel-line, .stat-ph, .ports-skel-grid i, .free-skel { animation: none; } }
 
 .state-card {
   display: flex; flex-direction: column; align-items: center; gap: 6px;

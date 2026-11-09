@@ -1,14 +1,31 @@
 ﻿<template>
   <section>
     <!-- 统计条只属于实时页 -->
-    <div class="stats">
-      <div class="stat"><b class="num-idle">{{ statText(sum.idle) }}</b><span>空闲</span></div>
-      <div class="stat"><b class="num-charging">{{ statText(sum.charging) }}</b><span>充电中</span></div>
-      <div class="stat"><b class="num-fault">{{ statText(sum.fault) }}</b><span>故障</span></div>
+    <!--
+      统计条在「首屏加载」与「刷新中」都换成脉冲骨架占位：
+      原来加载时 statText 返回 '—'，三个破折号并排比数字还显眼，且刷新时会先跳一次旧值再跳新值。
+      aria-busy 让读屏器知道这几格正在加载；骨架样式复用 app.css 的 skelPulse。
+    -->
+    <div class="stats" :aria-busy="busy ? 'true' : 'false'">
+      <div class="stat">
+        <b v-if="!busy" class="num-idle">{{ statText(sum.idle) }}</b>
+        <i v-else class="stat-ph" aria-label="空闲数加载中"></i>
+        <span>空闲</span>
+      </div>
+      <div class="stat">
+        <b v-if="!busy" class="num-charging">{{ statText(sum.charging) }}</b>
+        <i v-else class="stat-ph" aria-label="充电中数加载中"></i>
+        <span>充电中</span>
+      </div>
+      <div class="stat">
+        <b v-if="!busy" class="num-fault">{{ statText(sum.fault) }}</b>
+        <i v-else class="stat-ph" aria-label="故障数加载中"></i>
+        <span>故障</span>
+      </div>
     </div>
 
-    <!-- 首屏三态：加载中（骨架，不先显示 0/0/0） -->
-    <template v-if="loading">
+    <!-- 首屏三态 + 刷新中：加载占位（不先显示 0/0/0，也不在刷新时闪旧值） -->
+    <template v-if="busy">
       <div class="skel skel-search"></div>
       <div v-for="i in 3" :key="i" class="skel skel-row">
         <span class="skel-line w60"></span>
@@ -169,6 +186,8 @@ const props = defineProps({
   active: { type: Boolean, default: true },
   // 节拍时间戳：端口面板「最后更新 x 分钟前」随它刷新
   nowTick: { type: Number, default: 0 },
+  // 刷新中（App 抓取 / 手动刷新）：统计条与列表都切加载占位
+  refreshing: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['refresh', 'reload', 'locate']);
@@ -183,6 +202,14 @@ const {
 } = useAreaSelection(props.live);
 
 const loading = computed(() => !loaded.value && !loadError.value);
+/**
+ * 是否展示「加载占位」：首屏未完成，或正在刷新。
+ *
+ * 只判 loading 的话，点刷新后统计条会先停在上一次的旧数字上，
+ * 等新数据回来再跳一次 —— 看起来像"卡住了"。刷新时同样给占位。
+ * 加载失败（loadError 非空）不算 busy，要露出错误态与重试按钮。
+ */
+const busy = computed(() => !loadError.value && (loading.value || props.refreshing));
 
 // ---- 点「建议去」：滚动到对应行并高亮 2 秒（不筛选列表）----
 const highlightName = ref('');
