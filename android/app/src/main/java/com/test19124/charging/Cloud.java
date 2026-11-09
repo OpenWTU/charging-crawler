@@ -519,6 +519,13 @@ public final class Cloud {
      */
     private static volatile JSONObject lastVersionInfo = null;
 
+    /** 本机当前 versionCode（App 启动时由 MainActivity 注入，用于识别 CDN 返回的陈旧缓存）。 */
+    private static volatile int selfVersionCode = 0;
+
+    public static void setSelfVersionCode(int code) {
+        selfVersionCode = code;
+    }
+
     public static JSONObject fetchVersion() throws Exception {
         long t0 = System.currentTimeMillis();
         try {
@@ -536,6 +543,15 @@ public final class Cloud {
         t0 = System.currentTimeMillis();
         try {
             JSONObject d = fetchVersionFromCdn();
+            // 防御：CDN 可能返回**旧缓存**。如果它给的版本号不高于本机当前版本，
+            // 说明要么确实没有新版、要么拿的是陈旧缓存 —— 两种情况都继续往下降级，
+            // 让节点（权威源）来拍板，避免「明明有新版本却提示已是最新」。
+            int cdnCode = d.optInt("versionCode", 0);
+            if (selfVersionCode > 0 && cdnCode > 0 && cdnCode <= selfVersionCode) {
+                DebugLog.add("版本检查[CDN] 返回 " + d.optString("versionName")
+                        + "（不高于当前 " + selfVersionCode + "），继续尝试节点确认");
+                throw new java.io.IOException("CDN 版本不新于当前，改用节点确认");
+            }
             d.put("_source", "cdn");
             lastVersionInfo = d;
             DebugLog.add("版本检查[CDN] 成功 → " + d.optString("versionName")
@@ -569,17 +585,18 @@ public final class Cloud {
      * 的绝对地址 —— CDN 能通通常说明 GitHub 生态也通，且该前缀在 downloadApk 白名单里。
      */
     private static JSONObject fetchVersionFromCdn() throws Exception {
-        JSONObject d = httpGetJson(
-                "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/version.json", 4000);
-        // 仓库里的 version.json 是 CI 生成的同一份，apkPath 是服务器相对路径
-        // （`/download/app-debug.apk?v=...`）。这里改写成 GitHub Release 的绝对地址：
-        // CDN 能通通常说明 GitHub 生态也通，而且这个前缀在 downloadApk 白名单里。
-        String apkPath = d.optString("apkPath", "");
-        String name = d.optString("versionName", "").trim();
-        if (apkPath.startsWith("/") && !name.isEmpty()) {
-            d.put("apkPath", "https://github.com/OpenWTU/charging-crawler/releases/download/v"
-                    + name + "/app-debug.apk");
-        }
+        // 时间戳查询参数：jsDelivr 按完整 URL 做缓存键（实测 ?t=xxx 与无参数是两条独立缓存），
+        // 加它就能绕开边缘节点 + 运营商代理 + 手机本地这三层缓存。
+        // 不加的话，分支引用 @main 会被缓存 7 天（cache-control: max-age=604800），
+        // 表现就是「明明发了新版，检查更新还一直返回几个版本前的号」。
+        String url = "https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/version.json?t="
+                + System.currentTimeMillis();
+        JSONObject d = httpGetJson(url, 4000);
+        // 注意：**不再把相对 apkPath 改写成 GitHub 地址**。
+        // 旧逻辑 `if (apkPath.startsWith("/")) → 换成 GitHub Release URL` 是 v2.4.24 卡死的元凶：
+        // 从 CDN 拿到版本信息，却非要从 GitHub 下包，GitHub 不通就直接失败。
+        // 现在 version.json 里的 apkPath 已经是绝对 URL（节点域名），直接用即可；
+        // 万一拿到的是旧版相对路径，downloadApk 的候选列表也会兜住（节点那两条）。
         return d;
     }
 
@@ -621,6 +638,11 @@ public final class Cloud {
         conn.setConnectTimeout(timeoutMs);
         conn.setReadTimeout(timeoutMs);
         conn.setRequestProperty("User-Agent", UA);
+        // 彻底禁缓存：jsDelivr 对分支引用返回 cache-control: max-age=604800（7 天），
+        // Android 的 HTTP 缓存会老老实实缓存 7 天 —— 表现就是「版本检查永远返回旧版本」。
+        conn.setUseCaches(false);
+        conn.setRequestProperty("Cache-Control", "no-cache, no-store, max-age=0");
+        conn.setRequestProperty("Pragma", "no-cache");
         try {
             InputStream in = conn.getInputStream();
             ByteArrayOutputStream buf = new ByteArrayOutputStream();

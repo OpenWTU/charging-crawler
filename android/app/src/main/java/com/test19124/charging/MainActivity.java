@@ -94,6 +94,13 @@ public class MainActivity extends Activity
         } catch (Throwable ignored) {
             // 状态栏美化失败不能影响启动
         }
+        // 把本机 versionCode 告诉 Cloud：版本检查时用它识别「CDN 返回的是陈旧缓存」
+        // （CDN 给的版本号不高于本机 → 不采信，继续往节点降级确认）
+        try {
+            Cloud.setSelfVersionCode(Cloud.versionCode(this));
+        } catch (Throwable ignored) {
+            // 拿不到版本号不影响启动，只是少一层 CDN 缓存防御
+        }
         tokens = new TokenStore(this);
         store = new Store(this);
         // 节点发现：启动时后台拉取 GitHub 目录 + mDNS，动态切服务器地址

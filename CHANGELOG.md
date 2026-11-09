@@ -6,6 +6,52 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.5.8] - 2026-11-09
+
+### 修「发了新版，检查更新还返回几个版本前的号」
+实测症状（v2.5.6 手机）：GitHub 通道超时 → CDN 返回 **2.5.3** → 提示有新版 →
+点更新 → 下载 GitHub 地址 → 超时 15s 失败。而服务器上 CDN 明明是 2.5.7。
+
+**根因链（三个问题叠加）**
+
+**① jsDelivr 对分支引用返回 `cache-control: public, max-age=604800`（7 天）**
+
+```
+cache-control: public, max-age=604800, s-maxage=43200
+x-jsd-version-type: branch
+```
+
+`max-age=604800` 是**客户端**缓存指令 → Android 的 HTTP 缓存老老实实缓存 7 天。
+`httpGetJson` 之前**完全没禁缓存**（没有 `setUseCaches(false)`，没有 `Cache-Control`），
+所以手机上「检查更新」永远拿到第一次缓存的那个版本。
+
+**② `fetchVersionFromCdn` 还在把相对 `apkPath` 改写成 GitHub 地址**
+
+```java
+if (apkPath.startsWith("/")) {
+    d.put("apkPath", "https://github.com/.../app-debug.apk");   // ← v2.4.24 卡死的元凶
+}
+```
+
+缓存里的 2.5.3 那份 version.json，`apkPath` 恰好是相对路径 → 触发改写 → GitHub → 超时失败。
+
+**③ CDN 返回旧版本时 App 认为「成功」，不再降级到节点**
+
+三层降级里 CDN 排在节点前面，它返回了「成功」（只是内容是旧的），流程就结束了，
+永远不会去问节点（权威源）到底是哪个版本。
+
+**修法（四处）**
+
+1. **`httpGetJson` 彻底禁缓存**：`setUseCaches(false)` + `Cache-Control: no-cache, no-store, max-age=0` + `Pragma: no-cache`
+2. **CDN URL 加时间戳**：`...version.json?t=<System.currentTimeMillis()>`
+   实测 jsDelivr 按**完整 URL**做缓存键 —— `?t=xxx` 的 `age: 28`，无参数的 `age: 594`，
+   所以时间戳能绕开边缘节点、运营商代理、手机本地三层缓存
+3. **删掉「相对 apkPath 改写成 GitHub」的旧逻辑** —— 现在 `apkPath` 已是绝对 URL，直接用
+4. **CDN 返回版本不高于本机时降级到节点确认**：`MainActivity.onCreate` 注入
+   `Cloud.setSelfVersionCode(...)`，CDN 给的 `versionCode <= selfVersionCode` 就不采信
+
+第 4 条是兜底中的兜底：即使将来缓存策略再变，也不会出现「明明有新版本却提示已是最新」。
+
 ## [v2.5.7] - 2026-11-09
 
 ### 发版脚本接管「清理同 minor 版本的旧 tag」

@@ -166,7 +166,7 @@ App 上传 → 节点 A 落库 → gossipsub 广播（topic "charge-snapshots"�
 cd webui && pnpm install && pnpm run build   # 输出到 webui/dist
 
 # APK（本机，需 Android SDK/JDK + release keystore）
-CHARGE_VERSION_CODE=2005007 CHARGE_VERSION_NAME=2.5.7 python android/build.py
+CHARGE_VERSION_CODE=2005008 CHARGE_VERSION_NAME=2.5.8 python android/build.py
 
 # Docker 镜像（本地验证）
 docker compose build
@@ -188,7 +188,7 @@ docker compose build
 
 ## 版本与测试
 
-- App：`2.5.7`（versionCode 2005007）
+- App：`2.5.8`（versionCode 2005008）
 - Node 后端测试：`cd server && pnpm test`（53 项，含密码学对拍、端点边界、P2P 两节点互传、worker mock）
 - 只读接口曾与 Python 版 24/24 对拍一致（Python 版已删除，见 git 历史）
 - 签名：release keystore 保持仓库外，SHA256 见 `/api/version`
