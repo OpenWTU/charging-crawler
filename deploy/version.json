@@ -1,11 +1,16 @@
 {
-  "versionCode": 2005001,
-  "versionName": "2.5.1",
-  "apkPath": "/download/app-debug.apk?v=2005001",
+  "versionCode": 2005003,
+  "versionName": "2.5.3",
+  "apkPath": "/download/app-debug.apk?v=2005003",
   "sizeText": "468K",
-  "sha256": "598179dee81f37e02d355301de021d0b735bcac3f59ce27062671595da908310",
-  "releasedAt": "2026-11-09 09:27",
+  "sha256": "d50d951885016a546b0ac106190c06864d6524d57b4509ebd75309cd17791ebf",
+  "releasedAt": "2026-11-09 09:40",
   "changelog": [
-    "fix(ci): 同步 version.json 后 purge jsDelivr 缓存"
+    "feat(android): APK 下载跟随版本源 + 多通道重试",
+    "fetchVersion() 给结果打 _source（github/cdn/node）并缓存 lastVersionInfo",
+    "downloadApk() 由单地址改为候选列表逐个重试，每个候选同一 sha256 校验",
+    "顺序：GitHub 源 → GitHub/CDN/节点；CDN 源 → CDN/GitHub/节点；",
+    "日志逐通道打印候选与结果（含主机名）",
+    "白名单新增 https://cdn.jsdelivr.net/gh/OpenWTU/charging-crawler@main/deploy/"
   ]
 }
