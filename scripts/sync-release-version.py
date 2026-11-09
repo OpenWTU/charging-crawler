@@ -33,6 +33,16 @@ Release 附件它取不到。App 的下载逻辑是「version.json 从哪个通�
     python3 scripts/sync-release-version.py v2.5.1
     python3 scripts/sync-release-version.py v2.5.1 --no-push     # 只改文件不提交
     python3 scripts/sync-release-version.py v2.5.1 --no-purge    # 不刷新 CDN
+    python3 scripts/sync-release-version.py v2.5.1 --cleanup-tags-dry-run   # 只看要删哪些 tag
+    python3 scripts/sync-release-version.py v2.5.1 --no-cleanup-tags        # 不清理旧 tag
+
+脚本做五件事：
+  1. 从 Release 拉 version.json → 写 deploy/version.json
+  2. 拉 APK → 写 deploy/app-v<version>.apk（清理旧版本文件）
+  3. commit + push main，并打 cdn-v<version> 不可变引用 tag
+  4. purge jsDelivr 上 version.json 的缓存
+  5. **清理同一 minor 版本的旧 tag**（v2.5.5 发版时删掉 v2.5.0~2.5.4 与 cdn-v2.5.x，
+     更早的 2.4.x 不动）。Release 不用管 —— tag 删掉后 GitHub 会自动把它转成 draft。
 
 退出码：0 成功；1 失败（含任何一步出错）。
 """
@@ -40,7 +50,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
+import time
 import sys
 import urllib.error
 import urllib.request
@@ -68,6 +80,84 @@ def git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
                           capture_output=True, cwd=TARGET.parent.parent)
 
 
+def list_remote_tags() -> list[str]:
+    """列出远程所有 v* / cdn-v* tag 名（去掉 ^{} 解引用行）。"""
+    out = subprocess.run(
+        ["git", "ls-remote", "--tags", "origin"],
+        check=True, text=True, capture_output=True, cwd=TARGET.parent.parent,
+    ).stdout
+    names: list[str] = []
+    for line in out.splitlines():
+        m = re.search(r"refs/tags/((?:cdn-)?v[\d.]+)$", line.strip())
+        if m:
+            names.append(m.group(1))
+    return names
+
+
+def cleanup_old_tags(current_tag: str, dry_run: bool = False) -> int:
+    """
+    清理**同一 minor 版本**里的旧 tag：v2.5.5 发版时删掉 v2.5.0~v2.5.4 与 cdn-v2.5.x，
+    更早的 minor（2.4.x 等）不动 —— 保持「每个 minor 只留最新一个」。
+
+    Release 不用管：GitHub 在 tag 被删后会自动把关联 Release 转成 draft，
+    对公众和 API 都不可见。
+
+    @return 删除（或 dry-run 下计划删除）的 tag 数
+    """
+    m = re.match(r"^v(\d+)\.(\d+)\.(\d+)$", current_tag)
+    if not m:
+        print(f"  ⚠ 无法从 {current_tag} 解析版本号，跳过 tag 清理")
+        return 0
+    minor = f"{m.group(1)}.{m.group(2)}"
+    keep = {current_tag, f"cdn-{current_tag}"}
+
+    try:
+        tags = list_remote_tags()
+    except subprocess.CalledProcessError as e:
+        print(f"  ⚠ 列远程 tag 失败：{e.stderr or e}")
+        return 0
+
+    doomed: list[str] = []
+    for name in tags:
+        if name in keep:
+            continue
+        mm = re.match(r"^(?:cdn-)?v(\d+)\.(\d+)\.(\d+)$", name)
+        if not mm:
+            continue
+        if f"{mm.group(1)}.{mm.group(2)}" != minor:
+            continue  # 只清同 minor
+        doomed.append(name)
+
+    if not doomed:
+        print(f"  无需清理（{minor}.x 只有 {current_tag}）")
+        return 0
+
+    doomed.sort()
+    print(f"  {minor}.x 下的旧 tag {len(doomed)} 个：{', '.join(doomed)}")
+    if dry_run:
+        print("  （dry-run，未实际删除）")
+        return len(doomed)
+
+    removed = 0
+    for name in doomed:
+        ok = False
+        for _ in range(3):
+            try:
+                git("push", "origin", f":refs/tags/{name}")
+                ok = True
+                break
+            except subprocess.CalledProcessError:
+                time.sleep(2)
+        if ok:
+            # 本地副本也删（没有就忽略）
+            git("tag", "-d", name, check=False)
+            removed += 1
+            print(f"    已删 {name}")
+        else:
+            print(f"    ✗ {name} 删除失败（网络？可稍后手动删）")
+    return removed
+
+
 def purge_one(name: str) -> None:
     """purge 单个文件；失败只提示，不影响主流程。"""
     purge = f"https://purge.jsdelivr.net/gh/{REPO}@main/deploy/{name}"
@@ -86,6 +176,10 @@ def main() -> int:
     ap.add_argument("tag", help="要同步的 tag，例如 v2.5.1")
     ap.add_argument("--no-push", action="store_true", help="只写文件，不 git commit/push")
     ap.add_argument("--no-purge", action="store_true", help="不调 jsDelivr purge")
+    ap.add_argument("--no-cleanup-tags", action="store_true",
+                    help="不清理同 minor 版本的旧 tag（默认会清，如 v2.5.0~2.5.4）")
+    ap.add_argument("--cleanup-tags-dry-run", action="store_true",
+                    help="只列出将要删除的旧 tag，不实际删除")
     args = ap.parse_args()
 
     tag = args.tag if args.tag.startswith("v") else "v" + args.tag
@@ -201,6 +295,13 @@ def main() -> int:
         # APK 走 @cdn-v<version> 不可变引用，永久缓存，不需要 purge；
         # 只有 version.json 在 @main 上，必须刷新。
         purge_one("version.json")
+
+    # ---- 5) 清理同 minor 版本的旧 tag ----
+    if args.no_cleanup_tags:
+        print("[5/5] 跳过 tag 清理（--no-cleanup-tags）")
+    else:
+        print(f"[5/5] 清理 {tag} 所在 minor 版本的旧 tag …")
+        cleanup_old_tags(tag, dry_run=args.cleanup_tags_dry_run)
 
     print()
     print(f"✅ 完成：{tag} 已同步到仓库，CDN 已请求刷新")

@@ -6,6 +6,35 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.5.7] - 2026-11-09
+
+### 发版脚本接管「清理同 minor 版本的旧 tag」
+`scripts/sync-release-version.py` 新增第 5 步：**清理同一 minor 版本里的旧 tag**。
+
+```
+v2.5.5 发版时 → 删掉 v2.5.0~v2.5.4 与 cdn-v2.5.0~4，保留 v2.5.5 + cdn-v2.5.5
+更早的 minor（2.4.x 等）不动
+```
+
+**Release 不用管**：GitHub 在 tag 被删后会自动把关联 Release 转成 **draft**，
+对公众和 `releases` API 都不可见（实测：删完 tag 后 Release 列表里 2.5.x 只剩 v2.5.5，
+`releases/latest` 仍正确指向 v2.5.5）。
+
+新增开关：
+
+```bash
+--cleanup-tags-dry-run   # 只列出要删哪些，不实际删
+--no-cleanup-tags        # 完全跳过这一步
+```
+
+### 顺带修：v2.5.5 首次同步漏掉了 APK
+v2.5.5 第一次跑同步脚本时，脚本还在找 `app-debug.apk`，而 Release 资产已改名成
+`app-v2.5.5.apk` → 找不到就跳过了 APK 下载，那次提交只有 `version.json`。
+后果：`cdn-v2.5.5` 指向的 commit 里没有 `deploy/app-v2.5.5.apk` → CDN 上那个 URL 会 404。
+
+已修：脚本改成优先找 `app-v<version>.apk`（回落 `app-debug.apk`），补提交了 APK，
+并把 `cdn-v2.5.5` **重打**到含 APK 的 commit（验证 tag tree 里确实有该 blob）。
+
 ## [v2.5.6] - 2026-11-09
 
 ### 修 update-node.sh 两处会漏同步 APK 的问题
