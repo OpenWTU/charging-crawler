@@ -708,9 +708,13 @@ public final class Cloud {
         String source = info == null ? "" : info.optString("_source", "");
         String name = info == null ? "" : info.optString("versionName", "").trim();
 
-        String github = name.isEmpty() ? ""
-                : "https://github.com/OpenWTU/charging-crawler/releases/download/v"
-                + name + "/app-debug.apk";
+        // Release 资产从 v2.5.5 起改名为 app-v<version>.apk；旧版本仍是 app-debug.apk。
+        // 两个都作为候选（新的优先），否则新版本的 GitHub 通道会 404
+        // —— v2.5.6 就是这样：资产叫 app-v2.5.6.apk，代码却找 app-debug.apk。
+        String ghBase = name.isEmpty() ? ""
+                : "https://github.com/OpenWTU/charging-crawler/releases/download/v" + name + "/";
+        String github = ghBase.isEmpty() ? "" : ghBase + "app-v" + name + ".apk";
+        String githubLegacy = ghBase.isEmpty() ? "" : ghBase + "app-debug.apk";
         // 主用不可变 tag 引用（永久缓存、不会拿到旧包）；@main 作为兜底
         // （万一某个版本没打 cdn-v tag，tag 引用会 404，这时回落到 main）。
         // 仓库里那份 APK 的文件名带版本号（app-v2.5.3.apk），旧版本由同步脚本清理
@@ -737,7 +741,7 @@ public final class Cloud {
         }
 
         // ② 主通道补齐：GitHub → CDN(tag) → CDN(main)
-        for (String u : new String[]{github, cdnTag, cdnMain}) {
+        for (String u : new String[]{github, githubLegacy, cdnTag, cdnMain}) {
             if (u != null && !u.isEmpty() && !out.contains(u)) out.add(u);
         }
 

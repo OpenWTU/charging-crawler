@@ -35,6 +35,42 @@ v2.5.5 第一次跑同步脚本时，脚本还在找 `app-debug.apk`，而 Relea
 已修：脚本改成优先找 `app-v<version>.apk`（回落 `app-debug.apk`），补提交了 APK，
 并把 `cdn-v2.5.5` **重打**到含 APK 的 commit（验证 tag tree 里确实有该 blob）。
 
+## [v2.5.7] - 2026-11-09
+
+### 修 v2.5.5 引入的回归：GitHub 下载通道全 404
+v2.5.5 把 Release 资产改名成 `app-v<version>.apk`，但 `Cloud.java` 里构造 GitHub 候选地址时
+**还在写 `app-debug.apk`**：
+
+```java
+// 错：资产早已改名
++ name + "/app-debug.apk"
+```
+
+实测：
+
+```
+https://github.com/.../releases/download/v2.5.6/app-debug.apk    → 404
+https://github.com/.../releases/download/v2.5.6/app-v2.5.6.apk   → 200  476979 B
+```
+
+也就是说 **v2.5.5 / v2.5.6 的 GitHub 通道整个失效**，只是被 CDN 和节点那两条兜底掩盖了。
+
+**修法**：同时构造两个候选，新的优先、旧的兜底
+
+```java
+String ghBase     = ".../releases/download/v" + name + "/";
+String github     = ghBase + "app-v" + name + ".apk";   // v2.5.5+
+String githubLegacy = ghBase + "app-debug.apk";         // ≤v2.5.4
+```
+
+### 完整候选顺序（最终版）
+
+| version.json 来源 | 顺序 |
+|---|---|
+| GitHub | GitHub(app-v) → GitHub(app-debug) → CDN(tag) → CDN(main) → 节点 → 节点兼容 → apkPath |
+| CDN | CDN(tag) → GitHub(app-v) → GitHub(app-debug) → CDN(main) → 节点 → 节点兼容 → apkPath |
+| 节点 | GitHub(app-v) → CDN(tag) → GitHub(app-debug) → CDN(main) → 节点 → 节点兼容 → apkPath |
+
 ## [v2.5.6] - 2026-11-09
 
 ### APK 下载候选顺序修正 + apkPath 绝对化
