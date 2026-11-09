@@ -3,7 +3,13 @@ name: release-image
 on:
   push:
     tags: ['v*']
+  # 同 release-apk：tag push 事件偶发不投递，留一条手动通道
   workflow_dispatch:
+    inputs:
+      tag:
+        description: '要构建镜像的 tag（如 v2.4.28）。留空则用当前 ref'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -15,6 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          # is_latest 靠 git tag -l 排序判断，必须把 tag 拉全（默认 fetch-depth:1 没有 tag）
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: pnpm/action-setup@v6
         with:
@@ -46,9 +57,10 @@ jobs:
       - name: 判断是否为最新版本 tag
         id: latest
         run: |
+          RELEASE_REF="${{ inputs.tag || github.ref_name }}"
           LATEST=$(git tag -l 'v[0-9]*' --sort=-v:refname | head -n1)
-          echo "latest_tag=$LATEST"
-          if [ "$LATEST" = "${GITHUB_REF_NAME}" ]; then
+          echo "latest_tag=$LATEST  release_ref=$RELEASE_REF"
+          if [ "$LATEST" = "$RELEASE_REF" ]; then
             echo "is_latest=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_latest=false" >> "$GITHUB_OUTPUT"
@@ -60,9 +72,9 @@ jobs:
           file: server/Dockerfile
           push: true
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ inputs.tag || github.ref_name }}
           tags: |
-            ghcr.io/openwtu/charging-crawler:${{ github.ref_name }}
+            ghcr.io/openwtu/charging-crawler:${{ inputs.tag || github.ref_name }}
             ${{ steps.latest.outputs.is_latest == 'true' && 'ghcr.io/openwtu/charging-crawler:latest' || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

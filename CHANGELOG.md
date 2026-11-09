@@ -6,7 +6,35 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
-## [v2.4.28] - 2026-11-09
+## [v2.4.29] - 2026-11-09
+
+### 发版通道加固：workflow 支持手动指定 tag
+GitHub 的 **tag push 事件偶发不投递**（2026-11-09 实测：v2.4.24/25/28 推上去零 run，
+而 v2.4.26/27 正常；同时段 `main` push 与 dependabot PR 事件都正常）。
+这不是配置问题 —— 排查证据：
+
+- `release-image.yml` 那次也没触发，而它**从未被改动**
+- 同一时段 `main` 的 push 也没触发 `ci`（`06:48:34` 之后直接跳到 `07:31:54`）
+- `startup_failure` 计数为 0，GitHub 未拒绝 workflow 文件
+- 重推 `v2.4.26` 后两个 workflow 立刻正常触发
+
+**加固**：`release-apk.yml` / `release-image.yml` 都加 `workflow_dispatch.inputs.tag`，
+版本号与镜像 tag 统一用 `${{ inputs.tag || github.ref_name }}`：
+
+```
+Actions → release-apk → Run workflow → tag 填 v2.4.29
+```
+
+这样即使 tag push 事件丢了，也能从页面手动发版。**两种触发方式共存，不冲突**：
+推 tag 仍走自动，手动只是补一条通道。
+
+**顺带修两个会导致手动发版失败的细节**：
+1. `is_latest` 判断原来用 `${GITHUB_REF_NAME}` —— 手动触发时它是 `main`，
+   永远不等于最高 tag，于是**不打 `latest` 标签**，而生产 `update-node.sh` 跟的正是 `latest`
+2. `checkout` 默认 `fetch-depth: 1` 不拉 tag，`git tag -l` 会是空 → `is_latest` 恒为 false。
+   两个 workflow 都改成 `fetch-depth: 0` + `fetch-tags: true`
+
+
 
 ### 修复：同步 deploy/version.json 的步骤仍在静默失败
 v2.4.27 把它移到 Release 之后并加了 `continue-on-error`，发版不再被它拖垮，

@@ -3,7 +3,15 @@ name: release-apk
 on:
   push:
     tags: ['v*']
+  # 手动触发：GitHub 的 tag push 事件偶发不投递（2026-11-09 实测 v2.4.24/25/28 都没触发，
+  # 而 v2.4.26/27 正常），这里给一条不依赖该事件的发版通道。
+  # 用法：Actions → release-apk → Run workflow → 填 tag（如 v2.4.28）。
   workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（如 v2.4.28）。留空则用当前 ref'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -14,6 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-java@v4
         with:
@@ -66,8 +78,10 @@ jobs:
 
       - name: 计算 versionCode/versionName（从 tag 派生）
         run: |
-          CODE=$(python3 -c "import re,sys; m=re.match(r'v(\d+)\.(\d+)\.(\d+)', sys.argv[1]); print(int(m.group(1))*1000000 + int(m.group(2))*1000 + int(m.group(3)))" "${{ github.ref_name }}")
-          NAME=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          REF="${{ inputs.tag || github.ref_name }}"
+          echo "发布 ref: $REF"
+          CODE=$(python3 -c "import re,sys; m=re.match(r'v(\d+)\.(\d+)\.(\d+)', sys.argv[1]); print(int(m.group(1))*1000000 + int(m.group(2))*1000 + int(m.group(3)))" "$REF")
+          NAME=$(echo "$REF" | sed 's/^v//')
           echo "VERSION_CODE=$CODE" >> "$GITHUB_ENV"
           echo "VERSION_NAME=$NAME" >> "$GITHUB_ENV"
           echo "versionCode=$CODE versionName=$NAME"
