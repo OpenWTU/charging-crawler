@@ -1,11 +1,11 @@
 {
-  "versionCode": 2005004,
-  "versionName": "2.5.4",
-  "apkPath": "/download/app-debug.apk?v=2005004",
+  "versionCode": 2005005,
+  "versionName": "2.5.5",
+  "apkPath": "/download/app-v2.5.5.apk?v=2005005",
   "sizeText": "468K",
-  "sha256": "8c9d4b5d73ebb8dd7a835b68b2f58856a1e6393ac86490d9656c0024cca3b2c6",
-  "releasedAt": "2026-11-09 09:54",
+  "sha256": "fcb5fa495822bf2eea6b27bfa3cade9737abb981096ddf7937239179b5e84573",
+  "releasedAt": "2026-11-09 10:04",
   "changelog": [
-    "feat(android): APK 的 CDN 引用改不可变 tag + 文件名带版本"
+    "feat(release): APK 全链路带版本号，彻底避开缓存串版本"
   ]
 }
