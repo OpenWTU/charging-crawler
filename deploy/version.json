@@ -1,14 +1,15 @@
 {
-  "versionCode": 2004024,
-  "versionName": "2.4.24",
-  "apkPath": "/download/app-debug.apk?v=2004024",
-  "sizeText": "466K",
-  "sha256": "063330301ca2e105ab03111fab0e196a3edcdea2c127774e10b05abafe5fcd2d",
-  "releasedAt": "2026-11-09 15:27",
+  "versionCode": 2004029,
+  "versionName": "2.4.29",
+  "apkPath": "/download/app-debug.apk?v=2004029",
+  "sizeText": "468K",
+  "sha256": "32d940655c8e69a47965ad20f17bbd7b89223db8b3724b030d53944a88204afa",
+  "releasedAt": "2026-11-09 08:57",
   "changelog": [
-    "GitHub 访问统一三级降级：GitHub → CDN → 节点 API，每源都有日志",
-    "新增服务端 /api/nodes.json 代理（App 不依赖 GitHub 也能拿节点目录）",
-    "加载/刷新时统计条改骨架占位，清单骨架跟随刷新态",
-    "App 回前台重读系统深浅色（修切深色不生效）"
+    "feat(ci): workflow 支持手动指定 tag 发版（tag push 事件偶发丢失的兜底）",
+    "release-image.yml 那次也没触发，而它从未被改动 → 不是 release-apk.yml 改动引起",
+    "同一时段 main push 也没触发 ci（06:48:34 之后直接跳到 07:31:54）",
+    "startup_failure = 0，GitHub 未拒绝 workflow",
+    "重推 v2.4.26 后两个 workflow 立刻正常触发"
   ]
 }
