@@ -172,18 +172,49 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 用 gh CLI 而不是 heredoc 里的 Python：`run: |` 会把前导空格原样传进 stdin，
-          # python3 - <<'PY' 的缩进会被算进代码里，直接 IndentationError（v2.4.27 就踩了）。
+          # 完全显式：curl + jq，不依赖 gh CLI 的隐式行为，并开 set -x 便于排查。
+          set -x
+          set -o pipefail
+
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/deploy/version.json"
+          AUTH="Authorization: Bearer ${GH_TOKEN}"
+          ACC="Accept: application/vnd.github+json"
+
+          echo "--- 1) 取现有文件 sha（不存在则 404，正常）---"
+          RESP=$(curl -sS -w '\n%{http_code}' -H "$AUTH" -H "$ACC" "$API" || true)
+          BODY=$(printf '%s' "$RESP" | sed '$d')
+          CODE=$(printf '%s' "$RESP" | tail -n1)
+          echo "HTTP=$CODE"
+          SHA=""
+          if [ "$CODE" = "200" ]; then
+            SHA=$(printf '%s' "$BODY" | jq -r '.sha // empty')
+          fi
+          echo "existing sha=${SHA:-（无）}"
+
+          echo "--- 2) 构造请求体 ---"
           B64=$(base64 -w 0 version.json)
-          SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/deploy/version.json" --jq .sha 2>/dev/null || true)
-          echo "现有 deploy/version.json sha=${SHA:-（不存在，将新建）}"
+          echo "base64 长度=${#B64}"
           if [ -n "$SHA" ]; then
-            gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/deploy/version.json" \
-              -f message="chore(release): 同步 deploy/version.json [skip ci]" \
-              -f content="$B64" -f branch=main -f sha="$SHA"
+            PAYLOAD=$(jq -n --arg m "chore(release): 同步 deploy/version.json [skip ci]" \
+                              --arg c "$B64" --arg s "$SHA" \
+                              '{message:$m, content:$c, branch:"main", sha:$s}')
           else
-            gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/deploy/version.json" \
-              -f message="chore(release): 同步 deploy/version.json [skip ci]" \
-              -f content="$B64" -f branch=main
+            PAYLOAD=$(jq -n --arg m "chore(release): 同步 deploy/version.json [skip ci]" \
+                              --arg c "$B64" \
+                              '{message:$m, content:$c, branch:"main"}')
+          fi
+
+          echo "--- 3) PUT 提交 ---"
+          OUT=$(curl -sS -w '\n%{http_code}' -X PUT \
+            -H "$AUTH" -H "$ACC" -H "Content-Type: application/json" \
+            --data "$PAYLOAD" "$API" || true)
+          OUT_CODE=$(printf '%s' "$OUT" | tail -n1)
+          echo "PUT HTTP=$OUT_CODE"
+          printf '%s' "$OUT" | sed '$d' | head -c 600
+          echo
+
+          if [ "$OUT_CODE" != "200" ] && [ "$OUT_CODE" != "201" ]; then
+            echo "::error::同步 deploy/version.json 失败（HTTP $OUT_CODE）"
+            exit 1
           fi
           echo "deploy/version.json 已同步"

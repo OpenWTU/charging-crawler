@@ -6,7 +6,87 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
-## [v2.4.29] - 2026-11-09
+## [v2.5.0] - 2026-11-09
+
+汇总 2.4.7 之后的一整轮改造（中间 v2.4.24~29 是排障过程，tag 已清理）。
+
+### 网络访问：GitHub 三级降级
+`api.github.com` 在国内经常整段阻断，原来 App 的「检查更新」与「节点发现」都以它为起点，
+每次启动/检查都要先干等 3~4 秒超时。现在两处统一：
+
+| 用途 | 顺序 |
+|---|---|
+| 检查更新 | GitHub Releases API → jsDelivr CDN → 节点 `/api/version` |
+| 节点目录 | GitHub contents API → jsDelivr CDN → 节点 `/api/nodes.json` |
+
+**每个源都写 DebugLog**（成功记版本/条数与耗时，失败记异常类型与耗时），排查时不用猜走的哪条路。
+
+服务端侧：
+- 新增 `GET /api/nodes.json`（GitHub 代理，三级兜底：数据卷缓存 → 镜像内副本 → jsDelivr）
+- `P2P_WHITELIST_URL` 默认改 jsDelivr CDN
+
+### 移除桩归属：桩是公共设施，不属于任何设备
+曾按「一个桩锁给一个设备」实现过排他校验，前提是错的 —— 线上 17 台设备众包上报同一批
+39 个桩是正常用法。整套删掉（首见登记 / 跨设备拒绝 / 僵尸 owner 接管，约 80 行），
+`controllers.owner_device` 只记「最后写入者」作诊断。
+
+### 移除 REGISTER_TOKEN
+硬编码在 APK 里，反编译即可拿到，安全强度等同 User-Agent，还要多节点保持一致。
+准入的实际防线是：注册限流 + 上传限流 + IP/设备拉黑 + HMAC 验签 +（可选）人工审批。
+
+### App：端口数据本地优先
+`__onLocalState` 的载荷里本来就有 `ports`，但前端 `applyLocalState` 只吃 `areas`，
+端口被整个丢掉 —— 上传被拒/慢时看不到自己刚抓到的端口状态。
+新增 `webui/src/api/localPorts.js`（无依赖）：Android 推送 → 按 device_hex 索引 →
+`getAreaPorts`/`getAreasPorts` 先查本地 → 上传成功才 `clearLocalPorts()` 回服务器权威。
+TTL 10 分钟兜底。
+
+### App：暗色模式与状态栏
+- **WebView 不响应 `prefers-color-scheme`**：`WebSettings` 没开深色支持，
+  `matchMedia` 恒为 false → 补 `setAlgorithmicDarkeningAllowed`（API 33+）/
+  `setForceDark(FORCE_DARK_AUTO)`（API 29~32）
+- **`watchSystem()` 只定义从不调用**：补 `onMounted`，并改为幂等（先解绑再绑）
+- **App 回前台重读系统主题**：Android WebView 在后台切主题不一定派发 `change` 事件，
+  `onAppResume` 里补一次 `watchSystem()`
+- **状态栏跟随**：补 `FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS` + 清 `FLAG_TRANSLUCENT_STATUS`
+  （部分 ROM 缺这两个前置会静默忽略 `setStatusBarColor`），`onCreate` 先按浅色预置
+- 新增 `visibilitychange` 监听
+
+### App：加载态占位
+- 顶部「空闲/充电中/故障」在加载与刷新时换成脉冲骨架（`.stat-ph`），不再显示 `—` 或闪旧值
+- `busy = !loadError && (loading || refreshing)`；失败时不算 busy，要露出错误卡
+- 底部清单骨架本来就有，让它跟随 `busy`
+
+### 管理后台
+- **移动端适配**：侧栏改汉堡 + 抽屉（≤900px），触摸目标 ≥40px，表格外层可横滑，
+  配置中心改「键/值堆叠」布局，断点统一 900px
+- **节点网络页**：新增「设备可信度」表格（`GET /admin/api/device-credibility`），
+  按 `dev:` 前缀聚合 `p2p_validation`，按可疑数降序
+
+### 数据合理性校验
+- 修 `findBaseline` 的基准池：原条件只认 `device_id IS NOT NULL`，而**本机 worker 采的
+  快照 device_id 恰恰是 NULL** → 基准池只有 42%，互校长期空转（线上 `p2p_validation` 0 行）。
+  放宽为 `device_id IS NOT NULL OR client_ip IN ('server','127.0.0.1')` → 99%
+- App 上传也走合理性校验（`warn` 语义：只打 `_suspect` 标记，绝不丢数据）
+
+### CI / 发版流程
+- 两个 release workflow 都支持 `workflow_dispatch` + `tag` 输入
+  （GitHub 的 tag push 事件偶发不投递，2026-11-09 实测 v2.4.24/25/28 零 run，
+  而 v2.4.26/27 正常；同时段 main push 与 dependabot PR 事件都正常）
+- 修 `is_latest` 判断（原用 `GITHUB_REF_NAME`，手动触发时是 `main` → 不打 `latest`，
+  而生产 `update-node.sh` 跟的正是 `latest`）
+- 两个 workflow 的 `checkout` 改 `fetch-depth: 0` + `fetch-tags: true`（否则 `git tag -l` 为空）
+- 「同步 deploy/version.json」步骤移到 Release 之后 + `continue-on-error`，
+  并改用 `curl` + `jq` + `set -x`（原来用 heredoc 里的 Python，`run: |` 的缩进会进 stdin
+  导致 `IndentationError`；排在 Release 之前还会把 APK 发布一起带走）
+
+### 测试
+- 修 `p2pvalidate.test.ts` 时间敏感：基准时间写死 `2026-11-08`，而 `validateIncoming`
+  有「与当前时间差 >24h → no_baseline」的保护，**跨天之后 13 个用例 9 个必红**。
+  改用 `tsAt(offsetSec)` 相对时间。
+- 新增用例：多设备众包写同一桩、App 上传偏差标记、设备可信度聚合
+
+
 
 ### 发版通道加固：workflow 支持手动指定 tag
 GitHub 的 **tag push 事件偶发不投递**（2026-11-09 实测：v2.4.24/25/28 推上去零 run，
