@@ -1,16 +1,11 @@
 {
-  "versionCode": 2005000,
-  "versionName": "2.5.0",
-  "apkPath": "/download/app-debug.apk?v=2005000",
+  "versionCode": 2005001,
+  "versionName": "2.5.1",
+  "apkPath": "/download/app-debug.apk?v=2005001",
   "sizeText": "468K",
-  "sha256": "6bc414569ab6d69ef6b4bc995ff4eb690f0716403011a08fc0bb54f1cdeb03cb",
-  "releasedAt": "2026-11-09 09:21",
+  "sha256": "598179dee81f37e02d355301de021d0b735bcac3f59ce27062671595da908310",
+  "releasedAt": "2026-11-09 09:27",
   "changelog": [
-    "release: v2.5.0",
-    "App 检查更新 / 节点目录统一三级降级：GitHub → jsDelivr CDN → 节点 API，每源写 DebugLog",
-    "服务端新增 GET /api/nodes.json（GitHub 代理：数据卷缓存 → 镜像副本 → jsDelivr）",
-    "P2P_WHITELIST_URL 默认改 jsDelivr CDN",
-    "移除桩归属排他（桩是公共设施，17 台设备众包上报同一批桩是正常用法）",
-    "移除 REGISTER_TOKEN（硬编码在 APK，安全强度等同 UA）"
+    "fix(ci): 同步 version.json 后 purge jsDelivr 缓存"
   ]
 }
