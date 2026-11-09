@@ -1,15 +1,16 @@
 {
-  "versionCode": 2004029,
-  "versionName": "2.4.29",
-  "apkPath": "/download/app-debug.apk?v=2004029",
+  "versionCode": 2005000,
+  "versionName": "2.5.0",
+  "apkPath": "/download/app-debug.apk?v=2005000",
   "sizeText": "468K",
-  "sha256": "32d940655c8e69a47965ad20f17bbd7b89223db8b3724b030d53944a88204afa",
-  "releasedAt": "2026-11-09 08:57",
+  "sha256": "6bc414569ab6d69ef6b4bc995ff4eb690f0716403011a08fc0bb54f1cdeb03cb",
+  "releasedAt": "2026-11-09 09:21",
   "changelog": [
-    "feat(ci): workflow 支持手动指定 tag 发版（tag push 事件偶发丢失的兜底）",
-    "release-image.yml 那次也没触发，而它从未被改动 → 不是 release-apk.yml 改动引起",
-    "同一时段 main push 也没触发 ci（06:48:34 之后直接跳到 07:31:54）",
-    "startup_failure = 0，GitHub 未拒绝 workflow",
-    "重推 v2.4.26 后两个 workflow 立刻正常触发"
+    "release: v2.5.0",
+    "App 检查更新 / 节点目录统一三级降级：GitHub → jsDelivr CDN → 节点 API，每源写 DebugLog",
+    "服务端新增 GET /api/nodes.json（GitHub 代理：数据卷缓存 → 镜像副本 → jsDelivr）",
+    "P2P_WHITELIST_URL 默认改 jsDelivr CDN",
+    "移除桩归属排他（桩是公共设施，17 台设备众包上报同一批桩是正常用法）",
+    "移除 REGISTER_TOKEN（硬编码在 APK，安全强度等同 UA）"
   ]
 }

@@ -170,7 +170,9 @@ jobs:
       - name: 同步 deploy/version.json 到 main（失败不影响发版）
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 用 github.token 而不是 secrets.GITHUB_TOKEN：后者在某些仓库/组织配置下不展开，
+          # 会导致 Authorization 头变成空 Bearer → 401/409（这正是前几版静默失败的原因）
+          GH_TOKEN: ${{ github.token }}
         run: |
           # 完全显式：curl + jq，不依赖 gh CLI 的隐式行为，并开 set -x 便于排查。
           set -x
@@ -179,6 +181,12 @@ jobs:
           API="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/deploy/version.json"
           AUTH="Authorization: Bearer ${GH_TOKEN}"
           ACC="Accept: application/vnd.github+json"
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::GH_TOKEN 为空，token 未注入"
+            exit 1
+          fi
+          echo "token 长度=${#GH_TOKEN}"
 
           echo "--- 1) 取现有文件 sha（不存在则 404，正常）---"
           RESP=$(curl -sS -w '\n%{http_code}' -H "$AUTH" -H "$ACC" "$API" || true)
