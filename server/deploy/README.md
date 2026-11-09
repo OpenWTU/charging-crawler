@@ -364,3 +364,83 @@ environment:
 P2P：默认启用，白名单鉴权（签名来源 peerId）
 ```
 
+
+## 发版 checklist
+
+按顺序执行，每步都有明确的验证点。
+
+### 1. 本地验证
+
+```bash
+cd server  && npx tsc --noEmit && npx vitest run
+cd webui   && pnpm lint && pnpm build
+cd android && python build.py --no-version-json     # 本地编译验证
+```
+
+### 2. 提交并打 tag
+
+```bash
+git add -A && git commit -m "release: vX.Y.Z"
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin main
+git push origin vX.Y.Z
+```
+
+### 3. 等 CI 跑完
+
+需要 `release-apk` 和 `release-image` **两个都 success**。
+
+> ⚠️ GitHub 的 **tag push 事件偶发不投递**（2026-11-09 实测 v2.4.24/25/28 零 run，
+> 而 v2.4.26/27 正常；同时段 main push 与 dependabot PR 事件都正常）。
+> 如果推完 tag 一分钟内 Actions 页面没有新 run，就去
+> **Actions → release-apk / release-image → Run workflow，tag 填 vX.Y.Z** 手动触发。
+> 两个 workflow 都支持该输入，版本号与镜像 tag 都按 `inputs.tag || github.ref_name` 解析。
+
+### 4. 同步 version.json 并刷新 CDN
+
+```bash
+python3 scripts/sync-release-version.py vX.Y.Z
+```
+
+这一步做两件事：
+
+1. 把 Release 里的 `version.json` 复制成仓库的 `deploy/version.json` 并提交
+2. 调 `purge.jsdelivr.net` 主动刷新 CDN 缓存
+
+**为什么必须手工做**：
+- jsDelivr 只能代理**仓库文件**，代理不了 Release 附件，所以要有人把它提交进 main
+- jsDelivr 对 `@main` 这类分支引用**缓存 12 小时**，光提交不会立刻生效，必须 purge
+- CI 里自动做试过 4 种写法全部失败（git checkout / heredoc Python / gh CLI / curl+jq），
+  且拿不到 CI 日志，无法继续定位 —— 与其留个每次静默失败的步骤，不如手工做
+
+### 5. 部署到节点
+
+```bash
+ssh -i <key> root@<节点> \
+  "DATA_DIR=/var/lib/charge-cloud bash /opt/charge-node/update-node.sh vX.Y.Z"
+```
+
+`update-node.sh` 会：拉镜像 → 从 Release 同步 `version.json` + `app-debug.apk` →
+`docker compose up -d` 重建容器 → 健康检查 45s，失败自动回退旧镜像。
+
+### 6. 验证
+
+```bash
+curl -s http://127.0.0.1:8791/status | python3 -c "import sys,json;print(json.load(sys.stdin)['server']['version'])"
+curl -s http://127.0.0.1:8791/api/version        # versionName / sha256
+curl -s http://127.0.0.1:8791/api/nodes.json     # 节点目录代理
+sha256sum /var/lib/charge-cloud/download/app-debug.apk   # 与 version.json 的 sha256 一致
+```
+
+**注意**：`/status` 的 `server.version` 来自镜像 `build-arg`，所以部署后必须与 tag 一致；
+如果显示旧版本，说明容器没真正换镜像（检查 `update-node.sh` 的输出）。
+
+### 7. App 侧生效条件
+
+App 的「检查更新」三层降级：**GitHub Releases API → jsDelivr CDN → 节点 `/api/version`**。
+
+- 第一层：tag 发版后自动可用
+- 第二层：需要第 4 步的同步 + purge
+- 第三层：需要第 5 步的部署
+
+任一层拿到新版本即可，所以第二层滞后不会阻断更新，只是少一条兜底路径。

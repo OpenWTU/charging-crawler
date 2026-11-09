@@ -6,6 +6,33 @@
 > 说明：仓库内代码另有一套历史内部版本号（当前 `2.4.0`），
 > 对外发布使用独立语义化版本与 Git tag。
 
+## [v2.5.2] - 2026-11-09
+
+### 把 version.json 同步从 CI 挪到本地脚本
+`deploy/version.json` 的自动同步在 CI 里试过 4 种写法全部失败，且拿不到 CI 日志
+（jobs API 对本次调用返回空），无法继续定位：
+
+| 写法 | 结果 |
+|---|---|
+| `git fetch/checkout -B main` + commit | detached HEAD + 浅克隆下失败 |
+| `run: \|` 里 `python3 - <<'PY'` heredoc | 前导空格进 stdin → `IndentationError` |
+| `gh api -X PUT`（`secrets.GITHUB_TOKEN`） | 失败 |
+| `curl` + `jq`（`github.token`） | 仍失败 |
+
+与其留一个每次发版都静默失败的步骤，**删掉它**，改成：
+
+```bash
+python3 scripts/sync-release-version.py vX.Y.Z
+```
+
+脚本做两件事：① 把 Release 里的 `version.json` 复制成 `deploy/version.json` 并提交；
+② 调 `purge.jsdelivr.net` 主动刷新 CDN（实测 `HTTP 200 status=finished`）。
+
+同时把完整发版流程写进 `server/deploy/README.md` 的「发版 checklist」（7 步，含验证点）。
+
+**为什么必须手工**：jsDelivr 只能代理仓库文件（代理不了 Release 附件），
+且对 `@main` 分支引用**缓存 12 小时** —— 光提交不会立刻生效，必须 purge。
+
 ## [v2.5.1] - 2026-11-09
 
 ### CI：同步 version.json 后主动 purge jsDelivr 缓存
