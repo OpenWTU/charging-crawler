@@ -152,15 +152,6 @@ def main() -> int:
         # 一次 purge 目录下两个文件（jsDelivr 支持对单个 URL purge，逐个调）
         for f in ("version.json", "app-debug.apk"):
             purge_one(f)
-        try:
-            body = http_text(purge, timeout=30)
-            j = json.loads(body)
-            print(f"  HTTP 200 status={j.get('status')} throttled={j.get('throttled')} "
-                  f"providers={j.get('providers')}")
-            if j.get("status") != "finished":
-                print("  ⚠ purge 未完成，CDN 可能要等缓存自然过期（最多 12h）")
-        except Exception as e:  # noqa: BLE001
-            print(f"  ⚠ purge 失败：{e}（CDN 最多等 12h 自然过期）")
 
     print()
     print(f"✅ 完成：{tag} 已同步到仓库，CDN 已请求刷新")
